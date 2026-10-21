@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Add New Movie | Film Reel-ational Data{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 1rem;">
+    <a href="{{ url_for('index') }}" class="btn btn-secondary btn-sm">&larr; Back to Search</a>
+</div>
+
+<div class="panel" style="max-width: 860px; margin: 0 auto;">
+    <div class="panel-header">
+        <div>
+            <h1 class="panel-title">Add New Movie Entry</h1>
+            <p class="panel-subtitle">Inserts into <code>Movies</code> and links relational rows in <code>Genres</code>, <code>Actors</code>, and <code>Movie_Cast</code></p>
+        </div>
+    </div>
+
+    <form action="{{ url_for('add_movie_route') }}" method="POST">
+        <div class="form-group" style="margin-bottom: 1rem;">
+            <label for="title">Movie Title *</label>
+            <input type="text" id="title" name="title" placeholder="e.g. Blade Runner 2049" required>
+        </div>
+
+        <div class="filter-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 1rem;">
+            <div class="form-group">
+                <label for="budget">Production Budget ($ USD) *</label>
+                <input type="number" min="0" id="budget" name="budget" value="0" required>
+            </div>
+            <div class="form-group">
+                <label for="revenue">Box Office Revenue ($ USD) *</label>
+                <input type="number" min="0" id="revenue" name="revenue" value="0" required>
+            </div>
+        </div>
+
+        <div class="filter-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 1.15rem;">
+            <div class="form-group">
+                <label for="vote_average">Vote Average (0.0 – 10.0) *</label>
+                <input type="number" step="0.1" min="0" max="10" id="vote_average" name="vote_average" value="7.0" required>
+            </div>
+            <div class="form-group">
+                <label for="vote_count">Vote Count *</label>
+                <input type="number" min="0" id="vote_count" name="vote_count" value="100" required>
+            </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 1.25rem;">
+            <label>Select Genres (<code>Genres</code> table)</label>
+            <div class="checkbox-grid">
+                {% for g in all_genres %}
+                    <label class="checkbox-item">
+                        <input type="checkbox" name="genre_ids" value="{{ g.genre_id }}">
+                        <span>{{ g.genre_name }}</span>
+                    </label>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 1.25rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
+                <label>Initial Cast Members (<code>Actors</code> &amp; <code>Movie_Cast</code>)</label>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="addCastRow()">+ Add Another Actor</button>
+            </div>
+            <div id="cast-rows" style="display:flex; flex-direction:column; gap:0.6rem;">
+                <div class="filter-grid" style="grid-template-columns: 1fr 1fr;">
+                    <input type="text" name="actor_name[]" placeholder="Actor Name (e.g. Ryan Gosling)">
+                    <input type="text" name="character_name[]" placeholder="Character Role (e.g. Officer K)">
+                </div>
+                <div class="filter-grid" style="grid-template-columns: 1fr 1fr;">
+                    <input type="text" name="actor_name[]" placeholder="Actor Name (e.g. Harrison Ford)">
+                    <input type="text" name="character_name[]" placeholder="Character Role (e.g. Rick Deckard)">
+                </div>
+            </div>
+        </div>
+
+        <div style="display:flex; gap:0.75rem; justify-content:flex-end;">
+            <a href="{{ url_for('index') }}" class="btn btn-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary">✨ Create Movie Entry</button>
+        </div>
+    </form>
+</div>
+
+<script>
+function addCastRow() {
+    const container = document.getElementById('cast-rows');
+    const row = document.createElement('div');
+    row.className = 'filter-grid';
+    row.style.gridTemplateColumns = '1fr 1fr';
+    row.innerHTML = `
+        <input type="text" name="actor_name[]" placeholder="Actor Name">
+        <input type="text" name="character_name[]" placeholder="Character Role">
+    `;
+    container.appendChild(row);
+}
+</script>
+{% endblock %}

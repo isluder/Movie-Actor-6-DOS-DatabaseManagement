@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% block title %}{{ movie.title }} | Film Reel-ational Data{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 1rem; display:flex; justify-content:space-between; align-items:center;">
+    <a href="{{ url_for('index') }}" class="btn btn-secondary btn-sm">&larr; Back to Search</a>
+    <form action="{{ url_for('delete_movie_route', movie_id=movie.movie_id) }}" method="POST"
+          onsubmit="return confirm('Are you sure you want to delete {{ movie.title }}? ON DELETE CASCADE will remove all linked Genres and Movie_Cast records.');">
+        <button type="submit" class="btn btn-danger btn-sm">🗑️ Delete Movie (Cascade)</button>
+    </form>
+</div>
+
+<div class="panel">
+    <div class="panel-header">
+        <div>
+            <h1 class="panel-title" style="font-size:1.65rem;">
+                {{ movie.title }} <span style="color:var(--text-secondary); font-weight:400; font-size:1.05rem;">(ID #{{ movie.movie_id }})</span>
+            </h1>
+            <div style="margin-top:0.45rem;">
+                {% for g in movie.genres %}
+                    <a href="{{ url_for('index', genre_id=g.genre_id) }}" class="badge badge-genre">{{ g.genre_name }}</a>
+                {% else %}
+                    <span style="color:var(--text-secondary); font-size:0.88rem;">No genres assigned</span>
+                {% endfor %}
+            </div>
+        </div>
+        <div>
+            <span class="badge badge-rating" style="font-size:1.1rem; padding:0.4rem 0.85rem;">
+                ⭐ {{ "%.1f"|format(movie.vote_average) }} / 10
+            </span>
+            <div style="font-size:0.8rem; color:var(--text-secondary); text-align:right; margin-top:0.25rem;">
+                {{ "{:,}".format(movie.vote_count) }} votes
+            </div>
+        </div>
+    </div>
+
+    <div class="stats-grid" style="margin-bottom:0;">
+        <div class="stat-card">
+            <div class="stat-label">Production Budget</div>
+            <div class="stat-value">{{ movie.budget | currency }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Box Office Revenue</div>
+            <div class="stat-value">{{ movie.revenue | currency }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Net Profit / Loss</div>
+            <div class="stat-value {% if movie.net_profit >= 0 %}green{% else %}red{% endif %}">
+                {% if movie.net_profit >= 0 %}+{% endif %}{{ movie.net_profit | currency }}
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Return on Investment (ROI)</div>
+            <div class="stat-value {% if movie.roi_percent is not none and movie.roi_percent >= 0 %}green{% elif movie.roi_percent is not none %}red{% endif %}">
+                {% if movie.roi_percent is not none %}
+                    {% if movie.roi_percent > 0 %}+{% endif %}{{ movie.roi_percent }}%
+                {% else %}
+                    N/A
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="detail-grid">
+    <!-- Left Column: Cast Management (Actors + Movie_Cast) -->
+    <div class="panel">
+        <div class="panel-header">
+            <div>
+                <h2 class="panel-title">Cast &amp; Character Roles (<code>Movie_Cast</code> &amp; <code>Actors</code>)</h2>
+                <p class="panel-subtitle">Add, update, or remove actors starring in this film</p>
+            </div>
+        </div>
+
+        <form action="{{ url_for('add_cast_route', movie_id=movie.movie_id) }}" method="POST" style="margin-bottom:1.25rem; background:var(--bg-secondary); padding:0.95rem; border-radius:8px; border:1px solid var(--border-color);">
+            <div style="font-size:0.85rem; font-weight:600; margin-bottom:0.6rem; color:var(--accent-gold);">
+                + Add or Update Cast Member
+            </div>
+            <div class="filter-grid" style="grid-template-columns: 1fr 1fr auto;">
+                <div class="form-group">
+                    <label for="actor_name">Actor Name</label>
+                    <input type="text" id="actor_name" name="actor_name" list="actors-list" placeholder="e.g. Leonardo DiCaprio" required>
+                    <datalist id="actors-list">
+                        {% for a in all_actors %}
+                            <option value="{{ a.actor_name }}">
+                        {% endfor %}
+                    </datalist>
+                </div>
+                <div class="form-group">
+                    <label for="character_name">Character Name</label>
+                    <input type="text" id="character_name" name="character_name" placeholder="e.g. Dom Cobb" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Save Role</button>
+            </div>
+        </form>
+
+        {% if movie.cast %}
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Actor ID</th>
+                            <th>Actor Name</th>
+                            <th>Character Role</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for c in movie.cast %}
+                            <tr>
+                                <td><code>#{{ c.actor_id }}</code></td>
+                                <td>
+                                    <a href="{{ url_for('index', actor=c.actor_name) }}" style="font-weight:600;">
+                                        {{ c.actor_name }}
+                                    </a>
+                                </td>
+                                <td>{{ c.character_name }}</td>
+                                <td>
+                                    <form action="{{ url_for('remove_cast_route', movie_id=movie.movie_id, actor_id=c.actor_id) }}" method="POST">
+                                        <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p style="color:var(--text-secondary); padding:1rem 0;">No cast members linked to this movie yet.</p>
+        {% endif %}
+    </div>
+
+    <!-- Right Column: Edit Movie & Genres Form -->
+    <div class="panel">
+        <div class="panel-header">
+            <div>
+                <h2 class="panel-title">Edit Movie &amp; Genres (<code>Movies</code> &amp; <code>Genres</code>)</h2>
+                <p class="panel-subtitle">Update attributes and relational genre mappings</p>
+            </div>
+        </div>
+
+        <form action="{{ url_for('edit_movie_route', movie_id=movie.movie_id) }}" method="POST">
+            <div class="form-group" style="margin-bottom:0.85rem;">
+                <label for="edit_title">Movie Title</label>
+                <input type="text" id="edit_title" name="title" value="{{ movie.title }}" required>
+            </div>
+
+            <div class="filter-grid" style="grid-template-columns: 1fr 1fr; margin-bottom:0.85rem;">
+                <div class="form-group">
+                    <label for="edit_budget">Budget ($ USD)</label>
+                    <input type="number" min="0" id="edit_budget" name="budget" value="{{ movie.budget }}" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit_revenue">Revenue ($ USD)</label>
+                    <input type="number" min="0" id="edit_revenue" name="revenue" value="{{ movie.revenue }}" required>
+                </div>
+            </div>
+
+            <div class="filter-grid" style="grid-template-columns: 1fr 1fr; margin-bottom:1rem;">
+                <div class="form-group">
+                    <label for="edit_vote_average">Vote Average (0.0 – 10.0)</label>
+                    <input type="number" step="0.1" min="0" max="10" id="edit_vote_average" name="vote_average" value="{{ movie.vote_average }}" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit_vote_count">Vote Count</label>
+                    <input type="number" min="0" id="edit_vote_count" name="vote_count" value="{{ movie.vote_count }}" required>
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom:1.15rem;">
+                <label>Assigned Genres (<code>Genres</code> junction table)</label>
+                <div class="checkbox-grid">
+                    {% for g in all_genres %}
+                        <label class="checkbox-item">
+                            <input type="checkbox" name="genre_ids" value="{{ g.genre_id }}"
+                                {% if g.genre_id in movie.genre_ids %}checked{% endif %}>
+                            <span>{{ g.genre_name }}</span>
+                        </label>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary" style="width:100%;">💾 Save Movie Changes</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

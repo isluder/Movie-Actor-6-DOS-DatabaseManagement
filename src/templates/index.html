@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block title %}Multi-Table Search | Film Reel-ational Data{% endblock %}
+
+{% block content %}
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-label">Total Movies</div>
+        <div class="stat-value gold">{{ stats.movie_count }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Total Actors</div>
+        <div class="stat-value">{{ stats.actor_count }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Cast Roles (Movie_Cast)</div>
+        <div class="stat-value">{{ stats.cast_links }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Genres</div>
+        <div class="stat-value">{{ stats.genre_count }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Box Office Bombs</div>
+        <div class="stat-value red">{{ stats.bombs_count }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Hidden Gems</div>
+        <div class="stat-value green">{{ stats.gems_count }}</div>
+    </div>
+</div>
+
+<div class="panel">
+    <div class="panel-header">
+        <div>
+            <h1 class="panel-title">Multi-Table Relational Database Search</h1>
+            <p class="panel-subtitle">Query simultaneously across <code>Movies</code>, <code>Actors</code>, <code>Movie_Cast</code>, <code>Genres</code>, and <code>Genre_Types</code></p>
+        </div>
+        <form action="{{ url_for('reload_data_route') }}" method="POST" style="display:flex; gap:0.5rem;">
+            <input type="hidden" name="mode" value="auto">
+            <button type="submit" class="btn btn-secondary btn-sm" title="Reload full Kaggle TMDB 5000 dataset from ./data">
+                🔄 Reload Kaggle DB
+            </button>
+        </form>
+    </div>
+
+    <form method="GET" action="{{ url_for('index') }}">
+        <div class="filter-grid">
+            <div class="form-group">
+                <label for="title">Movie Title (Movies)</label>
+                <input type="text" id="title" name="title" placeholder="e.g. Dark Knight, Moon..." value="{{ filters.title }}">
+            </div>
+            <div class="form-group">
+                <label for="actor">Actor Name (Actors)</label>
+                <input type="text" id="actor" name="actor" placeholder="e.g. Christian Bale, Cillian..." value="{{ filters.actor }}">
+            </div>
+            <div class="form-group">
+                <label for="character">Character Role (Movie_Cast)</label>
+                <input type="text" id="character" name="character" placeholder="e.g. Joker, Batman, Cobb..." value="{{ filters.character }}">
+            </div>
+            <div class="form-group">
+                <label for="genre_id">Genre (Genres)</label>
+                <select id="genre_id" name="genre_id">
+                    <option value="">All Genres</option>
+                    {% for g in genres %}
+                        <option value="{{ g.genre_id }}" {% if filters.genre_id == g.genre_id %}selected{% endif %}>
+                            {{ g.genre_name }} ({{ g.movie_count }})
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="min_rating">Min Rating (0–10)</label>
+                <input type="number" step="0.1" min="0" max="10" id="min_rating" name="min_rating" placeholder="e.g. 7.0" value="{{ filters.min_rating }}">
+            </div>
+            <div class="form-group">
+                <label for="sort_by">Sort Order</label>
+                <select id="sort_by" name="sort_by">
+                    <option value="vote_average_desc" {% if filters.sort_by == 'vote_average_desc' %}selected{% endif %}>Highest Rating</option>
+                    <option value="vote_average_asc" {% if filters.sort_by == 'vote_average_asc' %}selected{% endif %}>Lowest Rating</option>
+                    <option value="revenue_desc" {% if filters.sort_by == 'revenue_desc' %}selected{% endif %}>Highest Revenue</option>
+                    <option value="budget_desc" {% if filters.sort_by == 'budget_desc' %}selected{% endif %}>Highest Budget</option>
+                    <option value="profit_desc" {% if filters.sort_by == 'profit_desc' %}selected{% endif %}>Highest Net Profit</option>
+                    <option value="profit_asc" {% if filters.sort_by == 'profit_asc' %}selected{% endif %}>Biggest Net Loss</option>
+                    <option value="vote_count_desc" {% if filters.sort_by == 'vote_count_desc' %}selected{% endif %}>Most Votes</option>
+                    <option value="title_asc" {% if filters.sort_by == 'title_asc' %}selected{% endif %}>Title (A–Z)</option>
+                </select>
+            </div>
+            <div class="form-group" style="display:flex; flex-direction:row; gap:0.5rem;">
+                <button type="submit" class="btn btn-primary" style="flex:1;">Search</button>
+                <a href="{{ url_for('index') }}" class="btn btn-secondary">Clear</a>
+            </div>
+        </div>
+    </form>
+</div>
+
+<details class="sql-inspector">
+    <summary>💻 View Executed Multi-Table SQL Query ({{ movies|length }} results)</summary>
+    <pre>{{ executed_sql }}</pre>
+</details>
+
+<div class="panel">
+    <div class="panel-header">
+        <h2 class="panel-title">Query Results ({{ movies|length }} Movies)</h2>
+        <a href="{{ url_for('add_movie_route') }}" class="btn btn-primary btn-sm">+ Add New Entry</a>
+    </div>
+
+    {% if movies %}
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Title</th>
+                        <th>Genres</th>
+                        <th>Cast Preview</th>
+                        <th>Budget</th>
+                        <th>Revenue</th>
+                        <th>Net Profit / Loss</th>
+                        <th>Rating</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in movies %}
+                        <tr>
+                            <td><code>#{{ m.movie_id }}</code></td>
+                            <td>
+                                <a href="{{ url_for('movie_detail', movie_id=m.movie_id) }}" style="font-weight:700; font-size:0.98rem;">
+                                    {{ m.title }}
+                                </a>
+                            </td>
+                            <td>
+                                {% if m.genres %}
+                                    {% for gname in m.genres.split(',') %}
+                                        <span class="badge badge-genre">{{ gname }}</span>
+                                    {% endfor %}
+                                {% else %}
+                                    <span style="color:var(--text-secondary);">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="cast-preview">
+                                {{ m.cast_names if m.cast_names else 'No cast recorded' }}
+                            </td>
+                            <td>{{ m.budget | currency }}</td>
+                            <td>{{ m.revenue | currency }}</td>
+                            <td>
+                                {% if m.net_profit >= 0 %}
+                                    <span class="text-profit">+{{ m.net_profit | currency }}</span>
+                                {% else %}
+                                    <span class="text-loss">{{ m.net_profit | currency }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge badge-rating">⭐ {{ "%.1f"|format(m.vote_average) }}</span>
+                                <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:0.15rem;">
+                                    {{ "{:,}".format(m.vote_count) }} votes
+                                </div>
+                            </td>
+                            <td>
+                                <div style="display:flex; gap:0.4rem;">
+                                    <a href="{{ url_for('movie_detail', movie_id=m.movie_id) }}" class="btn btn-secondary btn-sm">
+                                        Edit / Cast
+                                    </a>
+                                    <form action="{{ url_for('delete_movie_route', movie_id=m.movie_id) }}" method="POST" onsubmit="return confirm('Delete {{ m.title }}? ON DELETE CASCADE will also remove its Genres and Movie_Cast links.');">
+                                        <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p style="color:var(--text-secondary); text-align:center; padding:2rem 0;">
+            No movies matched your filter criteria. Try broadening your search or <a href="{{ url_for('index') }}">clearing filters</a>.
+        </p>
+    {% endif %}
+</div>
+{% endblock %}

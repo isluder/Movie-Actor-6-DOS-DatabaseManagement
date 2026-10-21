@@ -1,0 +1,13 @@
+# Python cache & virtual environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# macOS & Windows OS files
+.DS_Store
+Thumbs.db
+
+# Large raw Kaggle CSVs (can be re-downloaded anytime with `python3 ingest_data.py --download`)
+data/*.csv
