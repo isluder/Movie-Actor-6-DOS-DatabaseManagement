@@ -5,9 +5,9 @@ cd "$(dirname "$0")"
 
 machine="podman-machine-default"
 
-docker build -t movie-actor-python .
+docker build --target notebook -t movie-actor-notebook .
 
 docker run --rm \
   -v "$PWD:/app" \
-  movie-actor-python \
+  movie-actor-notebook \
   python check_environment.py

@@ -223,3 +223,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local account signing secret and SQLite transient files
+.session-secret
+*.db-journal
+*.db-wal
+*.db-shm

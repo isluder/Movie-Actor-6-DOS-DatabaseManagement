@@ -1,0 +1,45 @@
+{
+  "version": "de1c904ed7ad423f9112a0011845bd2a",
+  "selection": "both",
+  "cast_complete": true,
+  "cast_cap": null,
+  "sources": {
+    "movies": {
+      "movies_rows": 45466,
+      "movies_valid_rows": 45463,
+      "movies_rejected": 3,
+      "credits_rows": 45476,
+      "empty_cast_rows": 2418,
+      "unique_movie_ids": 45433,
+      "duplicate_rows": 30,
+      "ambiguous_movie_ids": 2,
+      "source_roles": 562040,
+      "imported_roles": 562040,
+      "missing_roles": 0,
+      "source_cast_pairs": 560837,
+      "imported_cast_pairs": 560837,
+      "movies_without_imported_cast": 2415
+    },
+    "tmdb": {
+      "movies_rows": 4803,
+      "movies_valid_rows": 4803,
+      "credits_rows": 4803,
+      "empty_cast_rows": 43,
+      "unique_movie_ids": 4803,
+      "duplicate_rows": 0,
+      "ambiguous_movie_ids": 0,
+      "source_roles": 106257,
+      "imported_roles": 106257,
+      "missing_roles": 0,
+      "source_cast_pairs": 106084,
+      "imported_cast_pairs": 106084,
+      "movies_without_imported_cast": 43
+    }
+  },
+  "movies": 45641,
+  "overlap": 4595,
+  "actors": 206730,
+  "cast_pairs": 562552,
+  "roles": 668297,
+  "genre_links": 103175
+}

@@ -1,0 +1,33 @@
+{% macro csrf(token) %}<input type="hidden" name="csrf_token" value="{{ token }}">{% endmacro %}
+{% macro input(name,label,values,type='text',placeholder='') %}<div class="form-group"><label for="{{ name }}">{{ label }}</label><input id="{{ name }}" name="{{ name }}" type="{{ type }}" value="{{ values.get(name,'') if values.get(name) is not none else '' }}" placeholder="{{ placeholder }}" {% if type=='number' %}step="any"{% endif %}></div>{% endmacro %}
+{% macro errors(items) %}{% if items %}<div class="alert alert-error" role="alert"><ul>{% for field,message in items.items() %}<li><strong>{{ field|replace('_',' ') }}:</strong> {{ message }}</li>{% endfor %}</ul></div>{% endif %}{% endmacro %}
+{% macro sorting(page_type,values) %}
+<div class="form-group"><label for="sort_by">Sort by</label><select name="sort_by" id="sort_by">{% for field in sort_fields[page_type] %}<option value="{{ field }}" {% if values.get('sort_by',sort_fields[page_type][0])==field %}selected{% endif %}>{{ sort_labels[field] }}</option>{% endfor %}</select></div>
+<div class="form-group"><label for="sort_order">Order</label><select name="sort_order" id="sort_order"><option value="asc" {% if values.get('sort_order')=='asc' %}selected{% endif %}>Ascending</option><option value="desc" {% if values.get('sort_order','desc')=='desc' %}selected{% endif %}>Descending</option></select></div>
+{% endmacro %}
+{% macro source_select(values,sources,network=false) %}<div class="form-group"><label for="source">{{ 'Cast network' if network else 'Numerical data source' }}</label><select id="source" name="source">{% if network %}<option value="both" {% if values.get('source','both')=='both' %}selected{% endif %}>Combined sources</option>{% endif %}{% for key,label in sources.items() %}<option value="{{ key }}" {% if values.get('source','movies')==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>{% endmacro %}
+{% macro save(page_type,filters,user,token) %}{% if features.saved_searches %}{% if user %}<details class="panel"><summary>Save or update this search</summary><form method="post" action="{{ url_for('saved_queries') }}">{{ csrf(token) }}<input type="hidden" name="page_type" value="{{ page_type }}"><input type="hidden" name="spec" value="{{ filters|tojson|forceescape }}"><label>Save to<select name="existing_query_id" class="saved-choice"><option value="">New saved search</option>{% for choice in saved_choices if choice.page_type==page_type %}<option value="{{ choice.id }}" data-name="{{ choice.name }}" data-note="{{ choice.note }}" {% if request.args.get("_saved")|string==choice.id|string %}selected{% endif %}>Update {{ choice.name }}</option>{% endfor %}</select></label><div class="filter-grid"><label>Search name<input name="name" maxlength="100" required></label><label>Optional note<input name="note" maxlength="2000"></label></div><button class="btn btn-primary">Save to My Searches</button></form></details>{% else %}<p><a href="{{ url_for('login') }}">Log in</a> to save this search.</p>{% endif %}{% endif %}{% endmacro %}
+{% macro source_values(records,sources,highlight_votes=false) %}<div class="source-values">{% set differences=[] %}{% for key in ["title","budget","revenue","vote_average","vote_count"] %}{% if (key!='vote_count' or highlight_votes) and records|map(attribute=key)|unique|list|length>1 %}{% set _=differences.append(key|replace("_"," ")) %}{% endif %}{% endfor %}{% if differences %}<span class="badge">Values differ: {{ differences|join(", ") }}</span>{% endif %}{% for v in records %}<div class="source-value"><strong>{{ sources.get(v.source,v.source) }}</strong><span>{{ v.title }}</span><span>Rating {{ v.vote_average if v.vote_average is not none else 'unknown' }} · {{ v.vote_count if v.vote_count is not none else 'unknown' }} votes</span><span>Budget {{ v.budget|currency }} · Revenue {{ v.revenue|currency }}</span></div>{% endfor %}</div>{% endmacro %}
+{% macro pagination(page,result,page_url) %}<div class="pagination"><span>{{ result.total }} matches · Page {{ page }} of {{ [(result.total/result.size)|round(0,'ceil')|int,1]|max }}</span>{% if page>1 %}<a class="btn btn-secondary" href="{{ page_url(page-1) }}">Previous</a>{% endif %}{% if page*result.size<result.total %}<a class="btn btn-secondary" href="{{ page_url(page+1) }}">Next</a>{% endif %}</div>{% endmacro %}
+
+{% macro dashboard(data) %}
+<section class="dashboard" aria-label="Dashboard statistics">
+<div class="dashboard-heading"><p class="eyebrow">At a glance <span>· Click any card to customize</span></p><button type="button" class="text-button" id="dashboard-reset">Reset cards</button></div>
+<div class="stats-grid dashboard-grid">
+{% for key in data.defaults %}{% set metric=data.metrics|selectattr('id','equalto',key)|first %}
+<button type="button" class="stat-card stat-card-editable tone-{{ metric.tone }}" data-stat-slot="{{ loop.index0 }}" aria-haspopup="dialog" aria-controls="stat-dialog" aria-label="Customize {{ metric.label }} statistic">
+<span class="stat-topline"><span class="stat-label">{{ metric.label }}</span><span class="stat-symbol" aria-hidden="true">{{ metric.icon }}</span></span>
+<span class="stat-value">{{ metric.display }}</span><span class="stat-scope">{{ metric.scope }}</span><span class="stat-edit" aria-hidden="true">Customize ↗</span>
+</button>
+{% endfor %}</div>
+<p id="dashboard-message" class="sr-only" role="status"></p>
+</section>
+<dialog id="stat-dialog" aria-labelledby="stat-dialog-title" aria-describedby="stat-dialog-help"><form id="stat-dialog-form">
+<div class="panel-header"><h2 id="stat-dialog-title">Make this card yours</h2><button class="dialog-close" type="button" id="stat-dialog-close" aria-label="Close customization">×</button></div>
+<p id="stat-dialog-help" class="hint">Choose what this card shows. Your choices are saved in this browser.</p>
+<label for="stat-metric">Statistic</label><select id="stat-metric" name="metric">{% for metric in data.metrics %}<option value="{{ metric.id }}">{{ metric.label }}</option>{% endfor %}</select>
+<div class="stat-preview"><strong id="stat-preview-value"></strong><span id="stat-preview-scope"></span><p id="stat-preview-description"></p></div>
+<div class="form-actions"><button class="btn btn-primary" type="submit">Use this statistic</button><button class="btn btn-secondary" type="button" id="stat-dialog-reset">Restore default</button></div>
+</form></dialog>
+<script id="dashboard-data" type="application/json">{{ data|tojson }}</script><script defer src="{{ url_for('static',filename='dashboard.js') }}"></script>
+{% endmacro %}

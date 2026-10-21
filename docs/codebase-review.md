@@ -1,3 +1,5 @@
+> Historical pre-upgrade review. Current behavior and verification are documented in [implementation.md](implementation.md).
+
 # Integration and code review
 
 ## How the contributions fit

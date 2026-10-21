@@ -1,12 +1,13 @@
 from pathlib import Path
 import sqlite3
+from contextlib import closing
 
 import pandas as pd
 
 
 database_path = Path("podman_check.db")
 
-with sqlite3.connect(database_path) as connection:
+with closing(sqlite3.connect(database_path)) as connection, connection:
     connection.execute(
         """
         CREATE TABLE IF NOT EXISTS environment_check (

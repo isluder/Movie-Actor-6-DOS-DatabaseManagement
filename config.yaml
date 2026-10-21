@@ -1,0 +1,25 @@
+# Change Enable to Disable to turn a feature off, then restart the app.
+# These settings apply to local runs and Docker (the launcher mounts this folder).
+# Feature switches do not grant permissions or delete existing data.
+application_features:
+  Movie Search: Enable
+  Hidden Gems: Enable
+  Bombed at the Box Office: Enable
+  Source Differences: Enable
+  Six Degrees: Enable
+  Interactive Graph: Enable
+  Dashboard Statistics: Enable
+  SQL Previews: Enable
+  Source Provenance: Enable
+  Accounts: Disable
+  Registration: Disable
+  Password Changes: Disable
+  Saved Searches: Disable
+  Catalog Editing: Enable
+  Catalog Imports: Enable
+
+# Accounts controls login/logout. Disabling it also disables Registration,
+# Password Changes, Saved Searches, Catalog Editing, and web Catalog Imports.
+# Interactive Graph requires Six Degrees; without it the textual path still works.
+# Admin CLI commands remain available for setup, recovery, and catalog rebuilds.
+# Never put passwords or the session signing secret in this file.

@@ -1,564 +1,180 @@
-"""
-Database access layer for Film Reel-ational Data.
-Provides SQLite connection handling, schema initialization, multi-table queries,
-CRUD operations, and analytical queries ('Bombed at the Box Office' & 'Hidden Gems').
-"""
-
-import os
+"""Explicitly closed SQLite transactions and source-aware catalog queries."""
+from contextlib import contextmanager
+from pathlib import Path
+import json
 import sqlite3
-from typing import Any, Dict, List, Optional, Tuple
+import uuid
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "movies.db")
-SCHEMA_PATH = os.path.join(BASE_DIR, "schema.sql")
+BASE_DIR = Path(__file__).resolve().parent
+DB_PATH = str(BASE_DIR / 'movies.db')
+SOURCES = {'movies': 'The Movies Dataset', 'tmdb': 'TMDB 5000', 'demo': 'Demo', 'local': 'Local additions'}
+GEMS = dict(min_rating=7.4, min_votes=50, max_votes=4500, max_budget=35_000_000)
+CATALOG_TABLES = ['cast_suppressions','edit_history','local_overrides','film_genres','cast_roles','actor_names','film_values','source_records','source_files','catalog_genres','people','films','import_runs','catalog_meta']
 
-
-def get_connection(db_path: str = DB_PATH) -> sqlite3.Connection:
-    """Create a SQLite connection with row factory and foreign key enforcement enabled."""
-    conn = sqlite3.connect(db_path)
+@contextmanager
+def connection(db_path=DB_PATH):
+    conn = sqlite3.connect(str(db_path), timeout=60)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    return conn
-
-
-def init_db(db_path: str = DB_PATH) -> None:
-    """Initialize the SQLite database tables and indexes from schema.sql."""
-    with get_connection(db_path) as conn:
-        with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
-            conn.executescript(f.read())
+    conn.execute('PRAGMA foreign_keys=ON')
+    try:
+        yield conn
         conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
+get_connection = connection
 
-def get_dashboard_stats(db_path: str = DB_PATH) -> Dict[str, Any]:
-    """Return high-level counts and aggregates across all relational tables."""
-    with get_connection(db_path) as conn:
-        stats = {}
-        stats["movie_count"] = conn.execute("SELECT COUNT(*) FROM Movies").fetchone()[0]
-        stats["actor_count"] = conn.execute("SELECT COUNT(*) FROM Actors").fetchone()[0]
-        stats["cast_links"] = conn.execute("SELECT COUNT(*) FROM Movie_Cast").fetchone()[0]
-        stats["genre_count"] = conn.execute("SELECT COUNT(*) FROM Genre_Types").fetchone()[0]
-        stats["avg_rating"] = conn.execute(
-            "SELECT ROUND(COALESCE(AVG(vote_average), 0), 2) FROM Movies WHERE vote_count > 0"
-        ).fetchone()[0]
-        stats["bombs_count"] = conn.execute(
-            "SELECT COUNT(*) FROM Movies WHERE budget >= 10000000 AND revenue > 0 AND revenue < budget"
-        ).fetchone()[0]
-        stats["gems_count"] = conn.execute(
-            "SELECT COUNT(*) FROM Movies WHERE vote_average >= 7.5 AND vote_count BETWEEN 50 AND 5000"
-        ).fetchone()[0]
-        return stats
+def init_db(db_path=DB_PATH):
+    with connection(db_path) as c:
+        c.executescript((BASE_DIR / 'schema.sql').read_text())
 
+def version(c):
+    r = c.execute("SELECT value FROM catalog_meta WHERE key='version'").fetchone()
+    return r[0] if r else 'uninitialized'
 
-def get_all_genres(db_path: str = DB_PATH) -> List[Dict[str, Any]]:
-    """Return all available genres ordered alphabetically."""
-    with get_connection(db_path) as conn:
-        rows = conn.execute(
-            """
-            SELECT gt.genre_id, gt.genre_name, COUNT(g.movie_id) AS movie_count
-            FROM Genre_Types gt
-            LEFT JOIN Genres g ON gt.genre_id = g.genre_id
-            GROUP BY gt.genre_id, gt.genre_name
-            ORDER BY gt.genre_name ASC
-            """
-        ).fetchall()
-        return [dict(r) for r in rows]
+def bump_version(c):
+    c.execute("INSERT INTO catalog_meta VALUES('version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (uuid.uuid4().hex,))
 
+def dictionaries(rows):
+    return [dict(r) for r in rows]
 
-def get_all_actors(limit: int = 500, db_path: str = DB_PATH) -> List[Dict[str, Any]]:
-    """Return actors ordered by name for dropdown selection."""
-    with get_connection(db_path) as conn:
-        rows = conn.execute(
-            """
-            SELECT a.actor_id, a.actor_name, COUNT(mc.movie_id) AS movie_count
-            FROM Actors a
-            LEFT JOIN Movie_Cast mc ON a.actor_id = mc.actor_id
-            GROUP BY a.actor_id, a.actor_name
-            ORDER BY a.actor_name ASC
-            LIMIT ?
-            """,
-            (limit,),
-        ).fetchall()
-        return [dict(r) for r in rows]
+def genres(c):
+    return dictionaries(c.execute('SELECT * FROM catalog_genres ORDER BY name'))
 
+def cast_preview(c,movie_id,source):
+    """Use original credit order, skipping hidden roles and duplicate performers."""
+    visible={r['id']:dict(r) for r in c.execute('''SELECT p.id,p.name FROM cast_roles cr JOIN people p ON p.id=cr.actor_id
+        WHERE cr.movie_id=? AND NOT EXISTS(SELECT 1 FROM cast_suppressions cs WHERE cs.movie_id=cr.movie_id
+        AND cs.actor_id=cr.actor_id AND cs.role=cr.role AND cs.source=cr.source)
+        GROUP BY p.id ORDER BY p.name COLLATE NOCASE,p.id''',(movie_id,))}
+    ordered=[];seen=set()
+    records=c.execute('''SELECT r.parsed FROM source_records r JOIN source_files sf ON sf.id=r.file_id
+        WHERE r.movie_id=? AND sf.kind='credits' AND r.parsed IS NOT NULL
+        ORDER BY (sf.source=?) DESC,sf.source,r.row_number,r.id''',(movie_id,source))
+    for record in records:
+        for actor in json.loads(record['parsed']):
+            aid=actor['actor_id']
+            if aid in visible and aid not in seen:
+                ordered.append(visible[aid]);seen.add(aid)
+                if len(ordered)==3:return ordered
+    ordered.extend(actor for aid,actor in visible.items() if aid not in seen)
+    return ordered[:3]
 
-def search_movies(
-    title_query: str = "",
-    actor_query: str = "",
-    character_query: str = "",
-    genre_id: Optional[int] = None,
-    min_rating: Optional[float] = None,
-    max_rating: Optional[float] = None,
-    min_budget: Optional[int] = None,
-    sort_by: str = "vote_average_desc",
-    limit: int = 100,
-    db_path: str = DB_PATH,
-) -> Tuple[List[Dict[str, Any]], str]:
-    """
-    Multi-table query searching across Movies, Actors, Movie_Cast, Genres, and Genre_Types.
-    Returns (list_of_movie_dicts, executed_sql_preview).
-    """
-    conditions = ["1=1"]
-    params: List[Any] = []
+def suggestions(c, text):
+    if not text.strip():
+        return []
+    # Prefix lookups use indexed names, substring matches remain supported.
+    return dictionaries(c.execute('''SELECT p.id,p.name,COUNT(DISTINCT cr.movie_id) movie_count
+        FROM people p LEFT JOIN cast_roles cr ON cr.actor_id=p.id
+        WHERE p.id IN (SELECT id FROM people WHERE name LIKE ? UNION SELECT actor_id FROM actor_names WHERE name LIKE ?)
+        GROUP BY p.id ORDER BY (p.name LIKE ?) DESC,p.name,p.id LIMIT 20''',
+        ('%'+text.strip()+'%', '%'+text.strip()+'%',text.strip()+'%')))
 
-    if title_query.strip():
-        conditions.append("m.title LIKE ?")
-        params.append(f"%{title_query.strip()}%")
+METRICS = '''WITH chosen AS (
+ SELECT movie_id,source,title,CASE WHEN variants=1 THEN budget END budget,CASE WHEN variants=1 THEN revenue END revenue,CASE WHEN variants=1 THEN vote_average END vote_average,CASE WHEN variants=1 THEN vote_count END vote_count,variants,0 overridden FROM source_metrics
+ WHERE source=:source AND NOT EXISTS(SELECT 1 FROM local_overrides o WHERE o.movie_id=source_metrics.movie_id AND o.source=:source)
+ UNION ALL SELECT movie_id,source,title,budget,revenue,vote_average,vote_count,1,1 FROM local_overrides WHERE source=:source
+), metrics AS (
+ SELECT f.id,f.title display_title,m.title,m.budget,m.revenue,m.vote_average,m.vote_count,m.variants,m.overridden,
+ CASE WHEN m.budget>0 AND m.revenue>0 THEN m.revenue-m.budget END net_profit,
+ CASE WHEN m.budget>0 AND m.revenue>0 THEN 100.0*(m.revenue-m.budget)/m.budget END roi_percent
+ FROM films f LEFT JOIN chosen m ON f.id=m.movie_id WHERE f.hidden=0
+) '''
 
-    if actor_query.strip():
-        conditions.append(
-            """EXISTS (
-                SELECT 1 FROM Movie_Cast mc_filter
-                JOIN Actors a_filter ON mc_filter.actor_id = a_filter.actor_id
-                WHERE mc_filter.movie_id = m.movie_id
-                  AND a_filter.actor_name LIKE ?
-            )"""
-        )
-        params.append(f"%{actor_query.strip()}%")
+def query_movies(c, page_type, f):
+    p = dict(f)
+    conditions = ['1=1']
+    if f.get('title'):
+        conditions.append('EXISTS(SELECT 1 FROM film_values v WHERE v.movie_id=m.id AND v.title LIKE :title_pattern) OR m.display_title LIKE :title_pattern')
+        conditions[-1] = '('+conditions[-1]+')'
+        p['title_pattern']='%'+f['title']+'%'
+    if f.get('actor') or f.get('actor_id') or f.get('character'):
+        cast_conditions=['cr.movie_id=m.id', 'NOT EXISTS(SELECT 1 FROM cast_suppressions cs WHERE cs.movie_id=cr.movie_id AND cs.actor_id=cr.actor_id AND cs.role=cr.role AND cs.source=cr.source)']
+        if f.get('actor'):
+            cast_conditions.append('EXISTS(SELECT 1 FROM actor_names an WHERE an.actor_id=cr.actor_id AND an.name LIKE :actor_pattern)')
+            p['actor_pattern']='%'+f['actor']+'%'
+        if f.get('actor_id'):
+            cast_conditions.append('cr.actor_id=:actor_id')
+        if f.get('character'):
+            cast_conditions.append('cr.role LIKE :character_pattern')
+            p['character_pattern']='%'+f['character']+'%'
+        conditions.append('EXISTS(SELECT 1 FROM cast_roles cr WHERE '+' AND '.join(cast_conditions)+')')
+    if f.get('genre_id'):
+        conditions.append('EXISTS(SELECT 1 FROM film_genres g WHERE g.movie_id=m.id AND g.genre_id=:genre_id)')
+    numeric = page_type in ('gems','bombs') or any(f.get(k) is not None for k in ('min_rating','max_rating','min_budget'))
+    if numeric:
+        conditions.append('m.variants=1')
+    for key,col,op in [('min_rating','vote_average','>='),('max_rating','vote_average','<='),('min_budget','budget','>=')]:
+        if f.get(key) is not None:
+            conditions.append(f'm.{col}{op}:{key}')
+    if page_type=='gems':
+        conditions += ['m.vote_count BETWEEN :min_votes AND :max_votes','m.budget>0']
+        if f.get('max_budget') is not None:
+            conditions.append('m.budget<=:max_budget')
+    if page_type=='bombs':
+        conditions += ['m.budget>0','m.revenue>0','m.revenue<m.budget']
+    sorts={'rating':'m.vote_average','title':'COALESCE(m.title,m.display_title) COLLATE NOCASE',
+           'budget':'m.budget','revenue':'m.revenue','votes':'m.vote_count','revenue_minus_budget':'m.net_profit',
+           'shortfall':'(-m.net_profit)','roi':'m.roi_percent','gem_score':'gem_score'}
+    direction={'asc':'ASC','desc':'DESC'}[f['sort_order']]
+    where=' AND '.join(conditions)
+    base=METRICS+' SELECT {select} FROM metrics m WHERE '+where
+    counts=dict(c.execute(base.format(select='''COUNT(*) total,
+        COALESCE(SUM(CASE WHEN m.net_profit<0 THEN -m.net_profit ELSE 0 END),0) total_shortfall,
+        AVG(m.roi_percent) avg_roi,AVG(m.vote_average) average_rating,
+        AVG(NULLIF(m.budget,0)) average_budget,SUM(NULLIF(m.revenue,0)) total_revenue'''),p).fetchone())
+    excluded=dict(c.execute(METRICS+'''SELECT SUM(variants IS NULL) missing_source,SUM(variants>1) ambiguous FROM metrics''',p).fetchone())
+    size=50 if page_type=='index' else 25
+    p.update(limit=size,offset=(f['page']-1)*size)
+    gem='m.vote_average*(1.0+(1.0-CAST(m.vote_count AS REAL)/(:max_votes+1))*0.25)' if page_type=='gems' else 'NULL'
+    select=f'm.*, {gem} gem_score'
+    sql=base.format(select=select)+' ORDER BY '+sorts[f['sort_by']]+' '+direction+' NULLS LAST,m.id LIMIT :limit OFFSET :offset'
+    rows=dictionaries(c.execute(sql,p))
+    for r in rows:
+        r['sources']=dictionaries(c.execute('SELECT source,title,budget,revenue,vote_average,vote_count FROM film_values WHERE movie_id=? ORDER BY source,id',(r['id'],)))
+        r['genres']=dictionaries(c.execute('''SELECT gt.id,gt.name FROM film_genres g JOIN catalog_genres gt ON gt.id=g.genre_id
+            WHERE g.movie_id=? GROUP BY gt.id ORDER BY gt.name,gt.id''',(r['id'],)))
+        r['cast_preview']=cast_preview(c,r['id'],f['source'])
+    return dict(rows=rows,total=counts['total'],summary=counts,excluded=excluded,size=size,sql=sql)
 
-    if character_query.strip():
-        conditions.append(
-            """EXISTS (
-                SELECT 1 FROM Movie_Cast mc_char
-                WHERE mc_char.movie_id = m.movie_id
-                  AND mc_char.character_name LIKE ?
-            )"""
-        )
-        params.append(f"%{character_query.strip()}%")
+def stats(c, source):
+    counts={name:c.execute('SELECT COUNT(*) FROM '+table+(' WHERE hidden=0' if table=='films' else '')).fetchone()[0]
+            for name,table in [('movies','films'),('actors','people'),('roles','cast_roles'),('genres','catalog_genres')]}
+    counts['gems']=c.execute(METRICS+'''SELECT COUNT(*) FROM metrics WHERE variants=1 AND vote_average>=7.4 AND vote_count BETWEEN 50 AND 4500 AND budget>0 AND budget<=35000000''',{'source':source}).fetchone()[0]
+    counts['bombs']=c.execute(METRICS+'''SELECT COUNT(*) FROM metrics WHERE variants=1 AND budget>=10000000 AND revenue>0 AND revenue<budget''',{'source':source}).fetchone()[0]
+    return counts
 
-    if genre_id is not None:
-        conditions.append(
-            """EXISTS (
-                SELECT 1 FROM Genres g_filter
-                WHERE g_filter.movie_id = m.movie_id
-                  AND g_filter.genre_id = ?
-            )"""
-        )
-        params.append(genre_id)
+def movie_detail(c, movie_id):
+    row=c.execute('SELECT * FROM films WHERE id=?',(movie_id,)).fetchone()
+    if not row:return None
+    d=dict(row)
+    d['values']=dictionaries(c.execute('''SELECT v.*,sf.path,sf.sha256,r.row_number,ir.imported_at FROM film_values v
+        LEFT JOIN source_records r ON r.id=v.record_id LEFT JOIN source_files sf ON sf.id=r.file_id
+        LEFT JOIN import_runs ir ON ir.id=sf.run_id WHERE v.movie_id=? ORDER BY v.source,v.id''',(movie_id,)))
+    d['cast']=dictionaries(c.execute('''SELECT cr.*,p.name,EXISTS(SELECT 1 FROM cast_suppressions cs WHERE cs.movie_id=cr.movie_id AND cs.actor_id=cr.actor_id AND cs.role=cr.role AND cs.source=cr.source) suppressed FROM cast_roles cr JOIN people p ON p.id=cr.actor_id WHERE movie_id=? ORDER BY p.name,cr.role,cr.source''',(movie_id,)))
+    d['genres']=dictionaries(c.execute('SELECT g.*,gt.name FROM film_genres g JOIN catalog_genres gt ON g.genre_id=gt.id WHERE movie_id=? ORDER BY gt.name',(movie_id,)))
+    d['overrides']=dictionaries(c.execute('SELECT * FROM local_overrides WHERE movie_id=?',(movie_id,)))
+    d['history']=dictionaries(c.execute('SELECT * FROM edit_history WHERE movie_id=? ORDER BY id DESC',(movie_id,)))
+    return d
 
-    if min_rating is not None:
-        conditions.append("m.vote_average >= ?")
-        params.append(min_rating)
+def difference_rows(c, f):
+    fields=['title','budget','revenue','vote_average','vote_count']
+    field=f.get('field')
+    tests=['COUNT(DISTINCT v.'+x+')>1 OR (COUNT(v.'+x+')>0 AND COUNT(v.'+x+')<COUNT(*))' for x in (fields if not field else [field])]
+    sql='''SELECT f.id,f.title FROM films f JOIN film_values v ON v.movie_id=f.id WHERE f.hidden=0 AND
+        EXISTS(SELECT 1 FROM film_values q WHERE q.movie_id=f.id AND q.title LIKE :title)
+        GROUP BY f.id HAVING '''+' OR '.join('('+t+')' for t in tests)
+    p={'title':'%'+f.get('title','')+'%','offset':(f['page']-1)*25}
+    total=c.execute('SELECT COUNT(*) FROM ('+sql+')',p).fetchone()[0]
+    rows=dictionaries(c.execute(sql+' ORDER BY f.title COLLATE NOCASE,f.id LIMIT 25 OFFSET :offset',p))
+    for r in rows:
+        r['sources']=dictionaries(c.execute('SELECT * FROM film_values WHERE movie_id=? ORDER BY source,id',(r['id'],)))
+        r['differing']=[x for x in fields if len({v[x] for v in r['sources']})>1]
+    return dict(rows=rows,total=total,size=25,sql=sql)
 
-    if max_rating is not None:
-        conditions.append("m.vote_average <= ?")
-        params.append(max_rating)
-
-    if min_budget is not None:
-        conditions.append("m.budget >= ?")
-        params.append(min_budget)
-
-    sort_map = {
-        "vote_average_desc": "(CASE WHEN m.vote_count >= 50 THEN 1 ELSE 0 END) DESC, m.vote_average DESC, m.vote_count DESC",
-        "vote_average_asc": "(CASE WHEN m.vote_count >= 50 THEN 1 ELSE 0 END) DESC, m.vote_average ASC, m.vote_count DESC",
-        "revenue_desc": "m.revenue DESC",
-        "budget_desc": "m.budget DESC",
-        "profit_desc": "(m.revenue - m.budget) DESC",
-        "profit_asc": "(m.revenue - m.budget) ASC",
-        "title_asc": "m.title ASC",
-        "vote_count_desc": "m.vote_count DESC",
-    }
-    order_clause = sort_map.get(sort_by, "m.vote_average DESC, m.vote_count DESC")
-    where_clause = " AND ".join(conditions)
-
-    query = f"""
-        SELECT
-            m.movie_id,
-            m.title,
-            m.budget,
-            m.revenue,
-            (m.revenue - m.budget) AS net_profit,
-            m.vote_average,
-            m.vote_count,
-            GROUP_CONCAT(DISTINCT gt.genre_name) AS genres,
-            GROUP_CONCAT(DISTINCT a.actor_name) AS cast_names
-        FROM Movies m
-        LEFT JOIN Genres g ON m.movie_id = g.movie_id
-        LEFT JOIN Genre_Types gt ON g.genre_id = gt.genre_id
-        LEFT JOIN Movie_Cast mc ON m.movie_id = mc.movie_id
-        LEFT JOIN Actors a ON mc.actor_id = a.actor_id
-        WHERE {where_clause}
-        GROUP BY m.movie_id
-        ORDER BY {order_clause}
-        LIMIT ?
-    """
-    params.append(limit)
-
-    with get_connection(db_path) as conn:
-        rows = conn.execute(query, params).fetchall()
-        return [dict(r) for r in rows], query.strip()
-
-
-def get_movie_details(movie_id: int, db_path: str = DB_PATH) -> Optional[Dict[str, Any]]:
-    """Retrieve a single movie along with its full cast list and genre list."""
-    with get_connection(db_path) as conn:
-        movie_row = conn.execute(
-            """
-            SELECT
-                movie_id,
-                title,
-                budget,
-                revenue,
-                (revenue - budget) AS net_profit,
-                CASE
-                    WHEN budget > 0 THEN ROUND(((CAST(revenue AS REAL) - budget) / budget) * 100, 1)
-                    ELSE NULL
-                END AS roi_percent,
-                vote_average,
-                vote_count
-            FROM Movies
-            WHERE movie_id = ?
-            """,
-            (movie_id,),
-        ).fetchone()
-
-        if not movie_row:
-            return None
-
-        movie = dict(movie_row)
-
-        genres = conn.execute(
-            """
-            SELECT gt.genre_id, gt.genre_name
-            FROM Genres g
-            JOIN Genre_Types gt ON g.genre_id = gt.genre_id
-            WHERE g.movie_id = ?
-            ORDER BY gt.genre_name ASC
-            """,
-            (movie_id,),
-        ).fetchall()
-        movie["genres"] = [dict(g) for g in genres]
-        movie["genre_ids"] = [g["genre_id"] for g in genres]
-
-        cast = conn.execute(
-            """
-            SELECT a.actor_id, a.actor_name, mc.character_name
-            FROM Movie_Cast mc
-            JOIN Actors a ON mc.actor_id = a.actor_id
-            WHERE mc.movie_id = ?
-            ORDER BY a.actor_name ASC
-            """,
-            (movie_id,),
-        ).fetchall()
-        movie["cast"] = [dict(c) for c in cast]
-
-        return movie
-
-
-# ============================================================================
-# CRUD Operations (Add, Edit, Remove Entries Across Tables)
-# ============================================================================
-
-def add_movie(
-    title: str,
-    budget: int,
-    revenue: int,
-    vote_average: float,
-    vote_count: int,
-    genre_ids: List[int],
-    cast_entries: List[Tuple[str, str]],
-    movie_id: Optional[int] = None,
-    db_path: str = DB_PATH,
-) -> int:
-    """
-    Insert a new movie into Movies, link its Genres, and create/link Actors in Movie_Cast.
-    cast_entries is a list of (actor_name, character_name) tuples.
-    Returns the newly created movie_id.
-    """
-    with get_connection(db_path) as conn:
-        cur = conn.cursor()
-        if movie_id is not None:
-            cur.execute(
-                """
-                INSERT INTO Movies (movie_id, title, budget, revenue, vote_average, vote_count)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (movie_id, title.strip(), budget, revenue, vote_average, vote_count),
-            )
-            new_movie_id = movie_id
-        else:
-            cur.execute(
-                """
-                INSERT INTO Movies (title, budget, revenue, vote_average, vote_count)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (title.strip(), budget, revenue, vote_average, vote_count),
-            )
-            new_movie_id = cur.lastrowid
-
-        for gid in set(genre_ids):
-            cur.execute(
-                "INSERT OR IGNORE INTO Genres (movie_id, genre_id) VALUES (?, ?)",
-                (new_movie_id, gid),
-            )
-
-        for actor_name, character_name in cast_entries:
-            actor_name = actor_name.strip()
-            character_name = character_name.strip() or "Unknown Role"
-            if not actor_name:
-                continue
-            existing_actor = cur.execute(
-                "SELECT actor_id FROM Actors WHERE LOWER(actor_name) = LOWER(?)",
-                (actor_name,),
-            ).fetchone()
-            if existing_actor:
-                actor_id = existing_actor["actor_id"]
-            else:
-                cur.execute("INSERT INTO Actors (actor_name) VALUES (?)", (actor_name,))
-                actor_id = cur.lastrowid
-
-            cur.execute(
-                """
-                INSERT OR REPLACE INTO Movie_Cast (movie_id, actor_id, character_name)
-                VALUES (?, ?, ?)
-                """,
-                (new_movie_id, actor_id, character_name),
-            )
-
-        conn.commit()
-        return new_movie_id
-
-
-def update_movie(
-    movie_id: int,
-    title: str,
-    budget: int,
-    revenue: int,
-    vote_average: float,
-    vote_count: int,
-    genre_ids: List[int],
-    db_path: str = DB_PATH,
-) -> bool:
-    """Update an existing movie's attributes and synchronize its genres."""
-    with get_connection(db_path) as conn:
-        cur = conn.cursor()
-        cur.execute(
-            """
-            UPDATE Movies
-            SET title = ?, budget = ?, revenue = ?, vote_average = ?, vote_count = ?
-            WHERE movie_id = ?
-            """,
-            (title.strip(), budget, revenue, vote_average, vote_count, movie_id),
-        )
-        if cur.rowcount == 0:
-            return False
-
-        cur.execute("DELETE FROM Genres WHERE movie_id = ?", (movie_id,))
-        for gid in set(genre_ids):
-            cur.execute(
-                "INSERT OR IGNORE INTO Genres (movie_id, genre_id) VALUES (?, ?)",
-                (movie_id, gid),
-            )
-
-        conn.commit()
-        return True
-
-
-def delete_movie(movie_id: int, db_path: str = DB_PATH) -> bool:
-    """
-    Delete a movie by movie_id.
-    ON DELETE CASCADE automatically removes associated rows in Movie_Cast and Genres.
-    """
-    with get_connection(db_path) as conn:
-        cur = conn.execute("DELETE FROM Movies WHERE movie_id = ?", (movie_id,))
-        conn.commit()
-        return cur.rowcount > 0
-
-
-def add_or_update_cast_member(
-    movie_id: int, actor_name: str, character_name: str, db_path: str = DB_PATH
-) -> None:
-    """Add an actor to a movie's cast (creating the Actor row if needed) or update character_name."""
-    actor_name = actor_name.strip()
-    character_name = character_name.strip() or "Uncredited"
-    if not actor_name:
-        return
-
-    with get_connection(db_path) as conn:
-        cur = conn.cursor()
-        existing = cur.execute(
-            "SELECT actor_id FROM Actors WHERE LOWER(actor_name) = LOWER(?)",
-            (actor_name,),
-        ).fetchone()
-        if existing:
-            actor_id = existing["actor_id"]
-        else:
-            cur.execute("INSERT INTO Actors (actor_name) VALUES (?)", (actor_name,))
-            actor_id = cur.lastrowid
-
-        cur.execute(
-            """
-            INSERT OR REPLACE INTO Movie_Cast (movie_id, actor_id, character_name)
-            VALUES (?, ?, ?)
-            """,
-            (movie_id, actor_id, character_name),
-        )
-        conn.commit()
-
-
-def remove_cast_member(movie_id: int, actor_id: int, db_path: str = DB_PATH) -> bool:
-    """Remove an actor from a movie's cast."""
-    with get_connection(db_path) as conn:
-        cur = conn.execute(
-            "DELETE FROM Movie_Cast WHERE movie_id = ? AND actor_id = ?",
-            (movie_id, actor_id),
-        )
-        conn.commit()
-        return cur.rowcount > 0
-
-
-# ============================================================================
-# Milestone Analytical Features:
-# 1. "Bombed at the Box Office"
-# 2. "Hidden Gems"
-# ============================================================================
-
-def get_box_office_bombs(
-    min_budget: int = 10_000_000,
-    genre_id: Optional[int] = None,
-    sort_by: str = "net_loss_desc",
-    limit: int = 50,
-    db_path: str = DB_PATH,
-) -> Tuple[List[Dict[str, Any]], str]:
-    """
-    Identify movies that 'Bombed at the Box Office':
-    - Filters movies with a significant production budget (budget >= min_budget)
-      where box office revenue failed to recoup the budget (revenue < budget and revenue > 0).
-    - Computes Net Loss ($), Return on Investment (ROI %), and Revenue-to-Budget ratio.
-    """
-    conditions = [
-        "m.budget >= ?",
-        "m.revenue > 0",
-        "m.revenue < m.budget",
-    ]
-    params: List[Any] = [min_budget]
-
-    if genre_id is not None:
-        conditions.append(
-            """EXISTS (
-                SELECT 1 FROM Genres g_filter
-                WHERE g_filter.movie_id = m.movie_id AND g_filter.genre_id = ?
-            )"""
-        )
-        params.append(genre_id)
-
-    sort_map = {
-        "net_loss_desc": "(m.budget - m.revenue) DESC",
-        "roi_asc": "((CAST(m.revenue AS REAL) - m.budget) / m.budget) ASC",
-        "rating_asc": "m.vote_average ASC",
-        "budget_desc": "m.budget DESC",
-    }
-    order_clause = sort_map.get(sort_by, "(m.budget - m.revenue) DESC")
-    where_clause = " AND ".join(conditions)
-
-    query = f"""
-        SELECT
-            m.movie_id,
-            m.title,
-            m.budget,
-            m.revenue,
-            (m.budget - m.revenue) AS net_loss,
-            ROUND(((CAST(m.revenue AS REAL) - m.budget) / m.budget) * 100, 1) AS roi_percent,
-            ROUND((CAST(m.revenue AS REAL) / m.budget) * 100, 1) AS recouped_percent,
-            m.vote_average,
-            m.vote_count,
-            GROUP_CONCAT(DISTINCT gt.genre_name) AS genres,
-            GROUP_CONCAT(DISTINCT a.actor_name) AS cast_names
-        FROM Movies m
-        LEFT JOIN Genres g ON m.movie_id = g.movie_id
-        LEFT JOIN Genre_Types gt ON g.genre_id = gt.genre_id
-        LEFT JOIN Movie_Cast mc ON m.movie_id = mc.movie_id
-        LEFT JOIN Actors a ON mc.actor_id = a.actor_id
-        WHERE {where_clause}
-        GROUP BY m.movie_id
-        ORDER BY {order_clause}
-        LIMIT ?
-    """
-    params.append(limit)
-
-    with get_connection(db_path) as conn:
-        rows = conn.execute(query, params).fetchall()
-        return [dict(r) for r in rows], query.strip()
-
-
-def get_hidden_gems(
-    min_rating: float = 7.4,
-    min_votes: int = 50,
-    max_votes: int = 4500,
-    max_budget: Optional[int] = 35_000_000,
-    genre_id: Optional[int] = None,
-    sort_by: str = "gem_score_desc",
-    limit: int = 50,
-    db_path: str = DB_PATH,
-) -> Tuple[List[Dict[str, Any]], str]:
-    """
-    Identify 'Hidden Gems':
-    - High critical/audience acclaim (vote_average >= min_rating)
-    - Statistically reliable sample size (vote_count >= min_votes)
-    - Overlooked by mainstream blockbuster audiences (vote_count <= max_votes)
-    - Optional cap on production budget (budget <= max_budget)
-    - Computes a 'Gem Score' rewarding high ratings with lower mainstream exposure.
-    """
-    conditions = [
-        "m.vote_average >= ?",
-        "m.vote_count >= ?",
-        "m.vote_count <= ?",
-    ]
-    params: List[Any] = [min_rating, min_votes, max_votes]
-
-    if max_budget is not None and max_budget > 0:
-        conditions.append("m.budget <= ?")
-        params.append(max_budget)
-
-    if genre_id is not None:
-        conditions.append(
-            """EXISTS (
-                SELECT 1 FROM Genres g_filter
-                WHERE g_filter.movie_id = m.movie_id AND g_filter.genre_id = ?
-            )"""
-        )
-        params.append(genre_id)
-
-    sort_map = {
-        "gem_score_desc": "gem_score DESC, m.vote_average DESC",
-        "rating_desc": "m.vote_average DESC, m.vote_count ASC",
-        "votes_asc": "m.vote_count ASC, m.vote_average DESC",
-        "roi_desc": "CASE WHEN m.budget > 0 THEN (CAST(m.revenue AS REAL) / m.budget) ELSE 0 END DESC",
-    }
-    order_clause = sort_map.get(sort_by, "gem_score DESC, m.vote_average DESC")
-    where_clause = " AND ".join(conditions)
-
-    query = f"""
-        SELECT
-            m.movie_id,
-            m.title,
-            m.budget,
-            m.revenue,
-            m.vote_average,
-            m.vote_count,
-            ROUND(
-                m.vote_average * (1.0 + (1.0 - (CAST(m.vote_count AS REAL) / (? + 1))) * 0.25),
-                2
-            ) AS gem_score,
-            CASE
-                WHEN m.budget > 0 AND m.revenue > 0
-                THEN ROUND(((CAST(m.revenue AS REAL) - m.budget) / m.budget) * 100, 1)
-                ELSE NULL
-            END AS roi_percent,
-            GROUP_CONCAT(DISTINCT gt.genre_name) AS genres,
-            GROUP_CONCAT(DISTINCT a.actor_name) AS cast_names
-        FROM Movies m
-        LEFT JOIN Genres g ON m.movie_id = g.movie_id
-        LEFT JOIN Genre_Types gt ON g.genre_id = gt.genre_id
-        LEFT JOIN Movie_Cast mc ON m.movie_id = mc.movie_id
-        LEFT JOIN Actors a ON mc.actor_id = a.actor_id
-        WHERE {where_clause}
-        GROUP BY m.movie_id
-        ORDER BY {order_clause}
-        LIMIT ?
-    """
-    # First param in SELECT is max_votes for normalizing the gem_score
-    full_params = [max_votes] + params + [limit]
-
-    with get_connection(db_path) as conn:
-        rows = conn.execute(query, full_params).fetchall()
-        return [dict(r) for r in rows], query.strip()
+def audit(c,movie_id,user_id,action,details):
+    c.execute('INSERT INTO edit_history(movie_id,user_id,action,details) VALUES(?,?,?,?)',(movie_id,user_id,action,json.dumps(details)))
+    bump_version(c)

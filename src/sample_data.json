@@ -1,0 +1,1120 @@
+{
+  "genre_types": [
+    [
+      28,
+      "Action"
+    ],
+    [
+      12,
+      "Adventure"
+    ],
+    [
+      16,
+      "Animation"
+    ],
+    [
+      35,
+      "Comedy"
+    ],
+    [
+      80,
+      "Crime"
+    ],
+    [
+      18,
+      "Drama"
+    ],
+    [
+      10751,
+      "Family"
+    ],
+    [
+      14,
+      "Fantasy"
+    ],
+    [
+      36,
+      "History"
+    ],
+    [
+      27,
+      "Horror"
+    ],
+    [
+      10402,
+      "Music"
+    ],
+    [
+      9648,
+      "Mystery"
+    ],
+    [
+      10749,
+      "Romance"
+    ],
+    [
+      878,
+      "Science Fiction"
+    ],
+    [
+      53,
+      "Thriller"
+    ],
+    [
+      37,
+      "Western"
+    ]
+  ],
+  "sample_movies": [
+    [
+      19995,
+      "Avatar",
+      237000000,
+      2923706026,
+      7.6,
+      29850,
+      [
+        28,
+        12,
+        14,
+        878
+      ],
+      [
+        [
+          65731,
+          "Sam Worthington",
+          "Jake Sully"
+        ],
+        [
+          8691,
+          "Zoe Saldana",
+          "Neytiri"
+        ],
+        [
+          10205,
+          "Sigourney Weaver",
+          "Dr. Grace Augustine"
+        ],
+        [
+          32747,
+          "Stephen Lang",
+          "Colonel Miles Quaritch"
+        ]
+      ]
+    ],
+    [
+      155,
+      "The Dark Knight",
+      185000000,
+      1004558444,
+      8.5,
+      31200,
+      [
+        28,
+        80,
+        18,
+        53
+      ],
+      [
+        [
+          3894,
+          "Christian Bale",
+          "Bruce Wayne / Batman"
+        ],
+        [
+          1810,
+          "Heath Ledger",
+          "Joker"
+        ],
+        [
+          6383,
+          "Aaron Eckhart",
+          "Harvey Dent / Two-Face"
+        ],
+        [
+          3895,
+          "Michael Caine",
+          "Alfred Pennyworth"
+        ],
+        [
+          64,
+          "Gary Oldman",
+          "James Gordon"
+        ]
+      ]
+    ],
+    [
+      27205,
+      "Inception",
+      160000000,
+      836836967,
+      8.4,
+      34900,
+      [
+        28,
+        12,
+        878
+      ],
+      [
+        [
+          6193,
+          "Leonardo DiCaprio",
+          "Dom Cobb"
+        ],
+        [
+          24045,
+          "Joseph Gordon-Levitt",
+          "Arthur"
+        ],
+        [
+          27578,
+          "Elliot Page",
+          "Ariadne"
+        ],
+        [
+          2524,
+          "Tom Hardy",
+          "Eames"
+        ],
+        [
+          2037,
+          "Cillian Murphy",
+          "Robert Fischer"
+        ]
+      ]
+    ],
+    [
+      157336,
+      "Interstellar",
+      165000000,
+      701729206,
+      8.4,
+      33100,
+      [
+        12,
+        18,
+        878
+      ],
+      [
+        [
+          10297,
+          "Matthew McConaughey",
+          "Joseph Cooper"
+        ],
+        [
+          1813,
+          "Anne Hathaway",
+          "Dr. Amelia Brand"
+        ],
+        [
+          83002,
+          "Jessica Chastain",
+          "Murphy 'Murph' Cooper"
+        ],
+        [
+          3895,
+          "Michael Caine",
+          "Professor Brand"
+        ],
+        [
+          1892,
+          "Matt Damon",
+          "Dr. Mann"
+        ]
+      ]
+    ],
+    [
+      496243,
+      "Parasite",
+      11363000,
+      257591776,
+      8.5,
+      17200,
+      [
+        35,
+        18,
+        53
+      ],
+      [
+        [
+          20738,
+          "Song Kang-ho",
+          "Kim Ki-taek"
+        ],
+        [
+          115290,
+          "Lee Sun-kyun",
+          "Park Dong-ik"
+        ],
+        [
+          556435,
+          "Cho Yeo-jeong",
+          "Choi Yeon-교"
+        ],
+        [
+          1255881,
+          "Choi Woo-shik",
+          "Kim Ki-woo"
+        ]
+      ]
+    ],
+    [
+      545611,
+      "Everything Everywhere All at Once",
+      25000000,
+      143400000,
+      7.8,
+      6100,
+      [
+        28,
+        12,
+        35,
+        878
+      ],
+      [
+        [
+          1620,
+          "Michelle Yeoh",
+          "Evelyn Wang"
+        ],
+        [
+          690,
+          "Ke Huy Quan",
+          "Waymond Wang"
+        ],
+        [
+          1459219,
+          "Stephanie Hsu",
+          "Joy Wang / Jobu Tupaki"
+        ],
+        [
+          8944,
+          "Jamie Lee Curtis",
+          "Deirdre Beaubeirdre"
+        ]
+      ]
+    ],
+    [
+      244786,
+      "Whiplash",
+      3300000,
+      49000000,
+      8.4,
+      14300,
+      [
+        18,
+        10402
+      ],
+      [
+        [
+          996701,
+          "Miles Teller",
+          "Andrew Neiman"
+        ],
+        [
+          18999,
+          "J.K. Simmons",
+          "Terence Fletcher"
+        ],
+        [
+          539,
+          "Paul Reiser",
+          "Jim Neiman"
+        ]
+      ]
+    ],
+    [
+      872585,
+      "Oppenheimer",
+      100000000,
+      957000000,
+      8.1,
+      8200,
+      [
+        18,
+        36
+      ],
+      [
+        [
+          2037,
+          "Cillian Murphy",
+          "J. Robert Oppenheimer"
+        ],
+        [
+          5081,
+          "Emily Blunt",
+          "Kitty Oppenheimer"
+        ],
+        [
+          1892,
+          "Matt Damon",
+          "Leslie Groves"
+        ],
+        [
+          3223,
+          "Robert Downey Jr.",
+          "Lewis Strauss"
+        ]
+      ]
+    ],
+    [
+      693134,
+      "Dune: Part Two",
+      190000000,
+      711844358,
+      8.3,
+      5400,
+      [
+        12,
+        878
+      ],
+      [
+        [
+          1190668,
+          "Timothée Chalamet",
+          "Paul Atreides"
+        ],
+        [
+          505710,
+          "Zendaya",
+          "Chani"
+        ],
+        [
+          933238,
+          "Rebecca Ferguson",
+          "Lady Jessica"
+        ],
+        [
+          3810,
+          "Javier Bardem",
+          "Stilgar"
+        ]
+      ]
+    ],
+    [
+      49529,
+      "John Carter",
+      260000000,
+      284139100,
+      6.3,
+      5350,
+      [
+        28,
+        12,
+        878
+      ],
+      [
+        [
+          60900,
+          "Taylor Kitsch",
+          "John Carter"
+        ],
+        [
+          21044,
+          "Lynn Collins",
+          "Dejah Thoris"
+        ],
+        [
+          5293,
+          "Willem Dafoe",
+          "Tars Tarkas"
+        ],
+        [
+          17288,
+          "Mark Strong",
+          "Matai Shang"
+        ]
+      ]
+    ],
+    [
+      57201,
+      "The Lone Ranger",
+      255000000,
+      89289910,
+      6.1,
+      5780,
+      [
+        28,
+        12,
+        37
+      ],
+      [
+        [
+          85,
+          "Johnny Depp",
+          "Tonto"
+        ],
+        [
+          53807,
+          "Armie Hammer",
+          "John Reid / The Lone Ranger"
+        ],
+        [
+          1283,
+          "Helena Bonham Carter",
+          "Red Harrington"
+        ],
+        [
+          2955,
+          "William Fichtner",
+          "Butch Cavendish"
+        ]
+      ]
+    ],
+    [
+      50321,
+      "Mars Needs Moms",
+      150000000,
+      38992758,
+      5.7,
+      620,
+      [
+        12,
+        16,
+        10751,
+        878
+      ],
+      [
+        [
+          13922,
+          "Seth Green",
+          "Milo (motion capture)"
+        ],
+        [
+          3234,
+          "Joan Cusack",
+          "Mom (voice)"
+        ],
+        [
+          59401,
+          "Dan Fogler",
+          "Gribble (voice)"
+        ]
+      ]
+    ],
+    [
+      1408,
+      "Cutthroat Island",
+      98000000,
+      10017322,
+      5.8,
+      510,
+      [
+        28,
+        12
+      ],
+      [
+        [
+          16935,
+          "Geena Davis",
+          "Morgan Adams"
+        ],
+        [
+          8654,
+          "Matthew Modine",
+          "William Shaw"
+        ],
+        [
+          8924,
+          "Frank Langella",
+          "Dawg Brown"
+        ]
+      ]
+    ],
+    [
+      64686,
+      "47 Ronin",
+      175000000,
+      151783839,
+      6.2,
+      3650,
+      [
+        28,
+        12,
+        14
+      ],
+      [
+        [
+          6384,
+          "Keanu Reeves",
+          "Kai"
+        ],
+        [
+          9195,
+          "Hiroyuki Sanada",
+          "Oishi"
+        ],
+        [
+          10738,
+          "Tadanobu Asano",
+          "Lord Kira"
+        ],
+        [
+          46364,
+          "Rinko Kikuchi",
+          "Witch"
+        ]
+      ]
+    ],
+    [
+      1911,
+      "The 13th Warrior",
+      160000000,
+      61698899,
+      6.6,
+      1780,
+      [
+        28,
+        12,
+        36
+      ],
+      [
+        [
+          3131,
+          "Antonio Banderas",
+          "Ahmad ibn Fadlan"
+        ],
+        [
+          6200,
+          "Vladimir Kulich",
+          "Buliwyf"
+        ],
+        [
+          1789,
+          "Omar Sharif",
+          "Melchior"
+        ]
+      ]
+    ],
+    [
+      428078,
+      "Mortal Engines",
+      100000000,
+      83672673,
+      6.1,
+      4520,
+      [
+        12,
+        878
+      ],
+      [
+        [
+          1360281,
+          "Hera Hilmar",
+          "Hester Shaw"
+        ],
+        [
+          113922,
+          "Robert Sheehan",
+          "Tom Natsworthy"
+        ],
+        [
+          1331,
+          "Hugo Weaving",
+          "Thaddeus Valentine"
+        ],
+        [
+          32747,
+          "Stephen Lang",
+          "Shrike"
+        ]
+      ]
+    ],
+    [
+      9016,
+      "Treasure Planet",
+      140000000,
+      109578115,
+      7.5,
+      3980,
+      [
+        12,
+        16,
+        10751,
+        878
+      ],
+      [
+        [
+          24045,
+          "Joseph Gordon-Levitt",
+          "Jim Hawkins (voice)"
+        ],
+        [
+          6198,
+          "Brian Murray",
+          "John Silver (voice)"
+        ],
+        [
+          7056,
+          "Emma Thompson",
+          "Captain Amelia (voice)"
+        ]
+      ]
+    ],
+    [
+      76757,
+      "Jupiter Ascending",
+      176000000,
+      183987723,
+      5.5,
+      6500,
+      [
+        28,
+        12,
+        878
+      ],
+      [
+        [
+          18973,
+          "Mila Kunis",
+          "Jupiter Jones"
+        ],
+        [
+          38673,
+          "Channing Tatum",
+          "Caine Wise"
+        ],
+        [
+          8767,
+          "Eddie Redmayne",
+          "Balem Abrasax"
+        ],
+        [
+          48,
+          "Sean Bean",
+          "Stinger Apini"
+        ]
+      ]
+    ],
+    [
+      49524,
+      "R.I.P.D.",
+      130000000,
+      78324220,
+      5.8,
+      3920,
+      [
+        28,
+        35,
+        80,
+        14
+      ],
+      [
+        [
+          1229,
+          "Jeff Bridges",
+          "Roy Pulsipher"
+        ],
+        [
+          10859,
+          "Ryan Reynolds",
+          "Nick Walker"
+        ],
+        [
+          4724,
+          "Kevin Bacon",
+          "Bobby Hayes"
+        ]
+      ]
+    ],
+    [
+      11692,
+      "The Adventures of Pluto Nash",
+      100000000,
+      7103973,
+      4.4,
+      420,
+      [
+        28,
+        35,
+        878
+      ],
+      [
+        [
+          776,
+          "Eddie Murphy",
+          "Pluto Nash"
+        ],
+        [
+          5916,
+          "Rosario Dawson",
+          "Dina Lake"
+        ],
+        [
+          532,
+          "Randy Quaid",
+          "Bruno"
+        ]
+      ]
+    ],
+    [
+      10045,
+      "Stealth",
+      135000000,
+      76932872,
+      5.4,
+      980,
+      [
+        28,
+        12,
+        878,
+        53
+      ],
+      [
+        [
+          2039,
+          "Josh Lucas",
+          "Lt. Ben Gannon"
+        ],
+        [
+          10860,
+          "Jessica Biel",
+          "Lt. Kara Wade"
+        ],
+        [
+          134,
+          "Jamie Foxx",
+          "Lt. Henry Purcell"
+        ]
+      ]
+    ],
+    [
+      17431,
+      "Moon",
+      5000000,
+      9760104,
+      7.6,
+      4250,
+      [
+        18,
+        878
+      ],
+      [
+        [
+          6807,
+          "Sam Rockwell",
+          "Sam Bell"
+        ],
+        [
+          1979,
+          "Kevin Spacey",
+          "GERTY (voice)"
+        ],
+        [
+          55470,
+          "Dominique McElligott",
+          "Tess Bell"
+        ]
+      ]
+    ],
+    [
+      220289,
+      "Coherence",
+      50000,
+      102617,
+      7.5,
+      2650,
+      [
+        9648,
+        878,
+        53
+      ],
+      [
+        [
+          1181313,
+          "Emily Baldoni",
+          "Em"
+        ],
+        [
+          62861,
+          "Maury Sterling",
+          "Kevin"
+        ],
+        [
+          35596,
+          "Nicholas Brendon",
+          "Mike"
+        ]
+      ]
+    ],
+    [
+      369557,
+      "Sing Street",
+      4000000,
+      13600000,
+      7.9,
+      2180,
+      [
+        35,
+        18,
+        10402,
+        10749
+      ],
+      [
+        [
+          1521571,
+          "Ferdia Walsh-Peelo",
+          "Conor 'Cosmo' Lawlor"
+        ],
+        [
+          1464650,
+          "Lucy Boynton",
+          "Raphina"
+        ],
+        [
+          73385,
+          "Jack Reynor",
+          "Brendan Lawlor"
+        ],
+        [
+          2983,
+          "Aidan Gillen",
+          "Robert Lawlor"
+        ]
+      ]
+    ],
+    [
+      371645,
+      "Hunt for the Wilderpeople",
+      2500000,
+      23200000,
+      7.7,
+      2050,
+      [
+        12,
+        35,
+        18
+      ],
+      [
+        [
+          4783,
+          "Sam Neill",
+          "Uncle Hec"
+        ],
+        [
+          1560244,
+          "Julian Dennison",
+          "Ricky Baker"
+        ],
+        [
+          34892,
+          "Taika Waititi",
+          "Minister"
+        ]
+      ]
+    ],
+    [
+      500664,
+      "Upgrade",
+      3000000,
+      16700000,
+      7.5,
+      3850,
+      [
+        28,
+        27,
+        878,
+        53
+      ],
+      [
+        [
+          85034,
+          "Logan Marshall-Green",
+          "Grey Trace"
+        ],
+        [
+          1371379,
+          "Betty Gabriel",
+          "Detective Cortez"
+        ],
+        [
+          1473284,
+          "Harrison Gilbertson",
+          "Eron Keen"
+        ]
+      ]
+    ],
+    [
+      169813,
+      "Short Term 12",
+      1000000,
+      1613644,
+      7.8,
+      1520,
+      [
+        18
+      ],
+      [
+        [
+          60073,
+          "Brie Larson",
+          "Grace"
+        ],
+        [
+          589652,
+          "John Gallagher Jr.",
+          "Mason"
+        ],
+        [
+          1206337,
+          "Kaitlyn Dever",
+          "Jayden"
+        ],
+        [
+          1265629,
+          "LaKeith Stanfield",
+          "Marcus"
+        ]
+      ]
+    ],
+    [
+      14784,
+      "The Fall",
+      30000000,
+      3669465,
+      7.7,
+      1340,
+      [
+        12,
+        18,
+        14
+      ],
+      [
+        [
+          72095,
+          "Lee Pace",
+          "Roy Walker / The Black Bandit"
+        ],
+        [
+          80352,
+          "Catinca Untaru",
+          "Alexandria"
+        ],
+        [
+          15854,
+          "Justine Waddell",
+          "Nurse Evelyn"
+        ]
+      ]
+    ],
+    [
+      417644,
+      "Leave No Trace",
+      6000000,
+      7700000,
+      7.5,
+      1190,
+      [
+        18
+      ],
+      [
+        [
+          11107,
+          "Ben Foster",
+          "Will"
+        ],
+        [
+          1658932,
+          "Thomasin McKenzie",
+          "Tom"
+        ],
+        [
+          58563,
+          "Dale Dickey",
+          "Dale"
+        ]
+      ]
+    ],
+    [
+      84332,
+      "Safety Not Guaranteed",
+      750000,
+      4400000,
+      7.4,
+      1490,
+      [
+        35,
+        18,
+        10749,
+        878
+      ],
+      [
+        [
+          89185,
+          "Aubrey Plaza",
+          "Darius Britt"
+        ],
+        [
+          45407,
+          "Mark Duplass",
+          "Kenneth Calloway"
+        ],
+        [
+          12799,
+          "Jake Johnson",
+          "Jeff Schwensen"
+        ]
+      ]
+    ],
+    [
+      807196,
+      "Boiling Point",
+      850000,
+      1200000,
+      7.6,
+      890,
+      [
+        18,
+        53
+      ],
+      [
+        [
+          1118,
+          "Stephen Graham",
+          "Andy Jones"
+        ],
+        [
+          1366558,
+          "Vinette Robinson",
+          "Carly"
+        ],
+        [
+          142516,
+          "Jason Flemyng",
+          "Alastair Skye"
+        ]
+      ]
+    ],
+    [
+      290098,
+      "The Handmaiden",
+      8800000,
+      38600000,
+      8.2,
+      3420,
+      [
+        18,
+        9648,
+        10749,
+        53
+      ],
+      [
+        [
+          115295,
+          "Kim Min-hee",
+          "Lady Hideko"
+        ],
+        [
+          1614392,
+          "Kim Tae-ri",
+          "Sook-hee"
+        ],
+        [
+          83024,
+          "Ha Jung-woo",
+          "Count Fujiwara"
+        ]
+      ]
+    ]
+  ]
+}

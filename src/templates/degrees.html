@@ -1,0 +1,26 @@
+{% extends 'base.html' %}{% import 'macros.html' as m with context %}
+{% block content %}
+<h1>Six Degrees</h1>
+<p>Find a shortest actor → shared movie → actor path within six co-star degrees. One shared movie counts as one degree.</p>
+{{ m.errors(errors) }}
+<form class="panel" method="get" id="degrees-form"><div class="filter-grid">
+{% for key,label in [('start','From actor'),('end','To actor')] %}
+<div class="form-group actor-picker"><label for="{{ key }}_search">{{ label }}</label><input id="{{ key }}_search" autocomplete="off" value="{{ actor_labels.get(key,'') }}" data-actor-target="{{ key }}" placeholder="Type a name, then select an actor"><input type="hidden" name="{{ key }}" id="{{ key }}" value="{{ filters.get(key) or '' }}"><div class="actor-options"></div><span class="hint">Selected ID: {{ filters.get(key) or 'none' }}</span></div>
+{% endfor %}
+{{ m.source_select(filters,sources,true) }}</div>
+{% if features.interactive_graph %}
+<label for="depth">Neighborhood depth: <output id="depth-value">{{ filters.get('depth',0) }}</output></label><input type="range" name="depth" id="depth" min="0" max="3" step="1" value="{{ filters.get('depth',0) }}">
+<p>Start at 0 for the path only. Double-click an actor to reveal movies, or a movie to reveal cast, up to 15 neighbors at a time. Double-click again for more. The slider expands whole co-star layers and can be crowded.</p>
+{% endif %}
+<button class="btn btn-primary">Find connection</button></form>
+{% if not errors %}{{ m.save('degrees',filters,g.user,csrf_token) }}{% endif %}
+{% if features.interactive_graph %}
+<p id="graph-status" role="status"></p><ol id="text-path" class="text-path"></ol>
+<div class="graph-toolbar"><button class="btn btn-secondary" id="graph-reset" type="button">Fit graph</button><button class="btn btn-secondary" id="graph-path-only" type="button">Path only</button><span>Circles: actors · Diamonds: movies · Gold: shortest path · Double-click to expand</span></div>
+<div class="graph-layout"><div id="graph" role="img" aria-label="Actor and movie connection graph"></div><aside class="panel" id="graph-details"><h2>Details</h2><p>Hover for details. Click to pin; double-click a node to expand it.</p></aside></div>
+<script id="graph-data" type="application/json">{{ graph_result|tojson }}</script><script defer src="{{ url_for('static',filename='vendor/cytoscape-3.33.0.min.js') }}"></script><script defer src="{{ url_for('static',filename='graph.js') }}"></script>
+{% elif graph_result %}
+<p role="status">{% if graph_result.status=='found' %}Shortest path: {{ graph_result.degrees }} degrees.{% elif graph_result.status=='same_actor' %}The same actor is selected: zero degrees.{% elif graph_result.status=='no_path' %}No connection found within six degrees in the selected imported network.{% else %}Search interrupted by its time limit. This does not establish that no connection exists.{% endif %}{% if graph_result.cast_complete==false %} This catalog was imported with incomplete cast coverage.{% endif %}</p>
+<ol class="text-path">{% for item in graph_result.path %}<li>{% if item.kind=='movie' %}<a href="{{ url_for('movie_detail',movie_id=item.entity_id) }}">{{ item.label }}</a>{% else %}{{ item.label }}{% endif %}</li>{% endfor %}</ol>
+{% endif %}
+{% endblock %}

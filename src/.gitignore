@@ -9,5 +9,5 @@ env/
 .DS_Store
 Thumbs.db
 
-# Large raw Kaggle CSVs (can be re-downloaded anytime with `python3 ingest_data.py --download`)
+# Deprecated duplicate CSV location; canonical inputs live under ../CSV-Files/
 data/*.csv
