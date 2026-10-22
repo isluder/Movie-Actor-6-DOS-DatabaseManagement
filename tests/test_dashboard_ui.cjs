@@ -54,3 +54,8 @@ blocked.cards[1].fire('click');blocked.get('stat-metric').value = 'matches';bloc
 assert.equal(blocked.cards[1].querySelector('.stat-label').textContent, 'matches');
 assert.match(blocked.get('dashboard-message').textContent, /storage is unavailable/);
 console.log('Dashboard UI: customization, previews, persistence, live values, per-page isolation, resets, stale settings, and blocked storage passed.');
+// Asynchronous Six Degrees statistics refresh values without losing card choices.
+app.cards[0].fire('click');app.get('stat-metric').value='matches';app.get('stat-dialog-form').fire('submit');
+for (const listener of app.get('dashboard-data').listeners['statistics-update']) listener({detail:{...base,metrics:[metric('movies',40),metric('actors',30),metric('matches',20)]}});
+assert.equal(app.cards[0].querySelector('.stat-value').textContent,'20');
+assert.equal(app.cards[0].querySelector('.stat-label').textContent,'matches');

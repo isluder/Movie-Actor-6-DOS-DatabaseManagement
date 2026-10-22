@@ -1,6 +1,8 @@
 {% extends 'base.html' %}{% import 'macros.html' as m with context %}
 {% block content %}
-<h1>Six Degrees</h1>
+<header class="page-heading"><div><p class="eyebrow">Explore the cast network</p><h1>Six Degrees</h1></div></header>
+{% if dashboard_data %}{{ m.dashboard(dashboard_data) }}{% endif %}
+
 <p>Find a shortest actor → shared movie → actor path within six co-star degrees. One shared movie counts as one degree.</p>
 {{ m.errors(errors) }}
 <form class="panel" method="get" id="degrees-form"><div class="filter-grid">
@@ -13,6 +15,9 @@
 <p>Start at 0 for the path only. Double-click an actor to reveal movies, or a movie to reveal cast, up to 15 neighbors at a time. Double-click again for more. The slider expands whole co-star layers and can be crowded.</p>
 {% endif %}
 <button class="btn btn-primary">Find connection</button></form>
+<section class="panel distance-panel" aria-labelledby="distance-title"><div class="results-heading"><div><p class="eyebrow">The reach of one actor</p><h2 id="distance-title">Connection distance distribution</h2></div><span class="source-pill" id="distance-source">Selected cast network</span></div>
+<p id="distance-status" role="status">Select a From actor to see their reach across the catalog.</p>
+<div id="distance-chart"></div><div id="farthest-connection" class="farthest-connection"></div><p class="hint">One shared movie = one degree. Counts cover all reachable other actors, beyond the six-degree path-search limit. Actors not connected are counted separately. The starting actor is excluded. These are connections in the imported catalog.</p></section>
 {% if not errors %}{{ m.save('degrees',filters,g.user,csrf_token) }}{% endif %}
 {% if features.interactive_graph %}
 <p id="graph-status" role="status"></p><ol id="text-path" class="text-path"></ol>
@@ -23,4 +28,5 @@
 <p role="status">{% if graph_result.status=='found' %}Shortest path: {{ graph_result.degrees }} degrees.{% elif graph_result.status=='same_actor' %}The same actor is selected: zero degrees.{% elif graph_result.status=='no_path' %}No connection found within six degrees in the selected imported network.{% else %}Search interrupted by its time limit. This does not establish that no connection exists.{% endif %}{% if graph_result.cast_complete==false %} This catalog was imported with incomplete cast coverage.{% endif %}</p>
 <ol class="text-path">{% for item in graph_result.path %}<li>{% if item.kind=='movie' %}<a href="{{ url_for('movie_detail',movie_id=item.entity_id) }}">{{ item.label }}</a>{% else %}{{ item.label }}{% endif %}</li>{% endfor %}</ol>
 {% endif %}
+<script defer src="{{ url_for('static',filename='distances.js') }}"></script>
 {% endblock %}

@@ -221,3 +221,48 @@ The updated
 `src/prototype_ingestion.ipynb` has read-only source-aware examples; its original
 version is preserved under `docs/historical/`. `docs/codebase-review.md` records the
 pre-upgrade review; see `docs/implementation.md` for current verification.
+
+### Source comparison and connection statistics
+
+Source Differences has customizable cards for all matching movies, differences
+beyond vote counts, and vote-count-only differences. Other selectable metrics count
+title, rating, budget, revenue, or vote-count differences. Counts cover every
+matching results page and respect title/field filters. Movies can differ in more
+than one field; preserved variants within one source are included in comparisons.
+
+Six Degrees adds customizable cards and a distance distribution above the graph.
+Select the **From actor** from autocomplete; statistics update immediately without
+requiring a To actor or submitting the path form. Changing the cast source
+recalculates them. Histogram bars count actors at each exact shortest co-star
+distance, including distances beyond six. Percentages use reachable other actors
+as their denominator; hover on a card to see its definition.
+
+The average excludes the starting actor and unreachable actors. **Actors not
+connected** counts other identities in the entire catalog that cannot be reached
+in the selected network, including actors with no cast record in that source.
+This describes the imported catalog, not all real-world collaborations. An isolated
+actor has zero connected actors and no defined average or maximum. Incomplete cast
+imports are disclosed. Interrupted traversal never labels unvisited actors as
+unreachable.
+
+The **longest shortest connection** identifies a farthest reachable actor, shows a
+full shortest textual route, and counts ties. Ties choose the lowest actor ID;
+route reconstruction uses stable movie/actor ID order. It measures how many degrees
+are necessary to reach that actor; it is not a search for the longest simple path
+or a walk with repeated nodes. The normal two-actor path search still stops at six
+degrees. The distribution and farthest route are independent of visualization caps.
+
+`GET /api/actor-statistics?start=ID&source=both` returns exact component statistics,
+distribution, farthest route, source, catalog version, completeness, and status.
+The breadth-first traversal visits each cast relation a bounded number of times,
+without constructing co-star cliques or calculating all pairs of actors. A
+five-second traversal limit returns an interrupted state. Summary results are
+cached for up to 128 actor/source/catalog-version combinations per process; catalog
+edits and rebuilds change the key. Browser requests are cancelled/superseded when
+selection changes. Statistics load separately from the page and graph expansion.
+On this machine, the full combined Tom Hanks calculation took approximately
+2.3 seconds cold (network loading included), with 0.17 seconds spent traversing;
+cached repeats were effectively immediate. These are local observations, not a
+production performance guarantee.
+
+Additional browser-logic test: `node tests/test_distances_ui.cjs`.

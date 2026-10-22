@@ -34,7 +34,7 @@ ENDPOINT_FEATURES = {
     'delete_movie_route': 'catalog_editing', 'edit_genres': 'catalog_editing',
     'add_cast_route': 'catalog_editing', 'remove_cast_route': 'catalog_editing',
     'imports': 'catalog_imports', 'connections_api': 'six_degrees',
-    'expand_node_api': 'interactive_graph',
+    'expand_node_api': 'interactive_graph', 'actor_statistics_api': 'six_degrees',
 }
 
 

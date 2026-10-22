@@ -128,3 +128,80 @@ def expand(c,db_path,kind,entity_id,source,offset=0,limit=15):
                total=len(neighbors),offset=offset,next_offset=offset+len(selected),
                has_more=offset+len(selected)<len(neighbors))
     return out
+
+
+_DISTANCE_CACHE = OrderedDict()
+_DISTANCE_LOCK = threading.Lock()
+
+
+def distance_distribution(a, m, start, total_actors, seconds=5):
+    """Exact component traversal: each movie/cast array is visited once, no clique."""
+    started = time.monotonic()
+    distances = {start: 0}
+    movies = set()
+    queue = deque([start])
+    histogram = defaultdict(int)
+    while queue:
+        if time.monotonic() - started > seconds:
+            return dict(status='interrupted', distribution=[], connected=None, disconnected=None,
+                        average=None, maximum=None, within_six=None, beyond_six=None,
+                        total_actors=total_actors, elapsed_seconds=time.monotonic() - started)
+        actor = queue.popleft()
+        for movie in a.get(actor, ()):
+            if movie in movies:
+                continue
+            movies.add(movie)
+            depth = distances[actor] + 1
+            for other in m[movie]:
+                if other not in distances:
+                    distances[other] = depth
+                    histogram[depth] += 1
+                    queue.append(other)
+    connected = len(distances) - 1
+    maximum = max(histogram, default=None)
+    farthest = min((actor for actor, depth in distances.items() if depth == maximum), default=None)
+    # Reconstruct a deterministic shortest route from the distance labels, without
+    # retaining parent tuples for hundreds of thousands of actors.
+    path = []
+    if farthest is not None:
+        cursor = farthest
+        path = [('actor', cursor)]
+        while cursor != start:
+            previous, shared = next((other, movie) for movie in a[cursor] for other in m[movie]
+                                    if distances.get(other) == distances[cursor] - 1)
+            path.extend([('movie', shared), ('actor', previous)])
+            cursor = previous
+        path.reverse()
+    return dict(status='complete', distribution=[dict(degrees=d, actors=histogram[d]) for d in sorted(histogram)],
+                connected=connected, disconnected=total_actors - 1 - connected,
+                average=sum(d * n for d, n in histogram.items()) / connected if connected else None,
+                maximum=maximum, farthest_actor=farthest, farthest_count=histogram.get(maximum, 0), farthest_path=path, within_six=sum(n for d, n in histogram.items() if d <= 6),
+                beyond_six=sum(n for d, n in histogram.items() if d > 6), total_actors=total_actors,
+                elapsed_seconds=time.monotonic() - started)
+
+
+def actor_statistics(c, db_path, start, source):
+    """Bounded cache stores summaries, never an all-pairs distance matrix."""
+    version = db.version(c)
+    key = (str(db_path), version, source, start)
+    # Serialize cold traversals to avoid concurrent copies of expensive work.
+    with _DISTANCE_LOCK:
+        if key in _DISTANCE_CACHE:
+            _DISTANCE_CACHE.move_to_end(key)
+            return {**_DISTANCE_CACHE[key], 'cached': True}
+        a, m = adjacency(c, db_path, source)
+        total = c.execute('SELECT COUNT(*) FROM people').fetchone()[0]
+        out = distance_distribution(a, m, start, total)
+        report = c.execute("SELECT value FROM catalog_meta WHERE key='report'").fetchone()
+        out.update(start=start, actor_name=c.execute('SELECT name FROM people WHERE id=?', (start,)).fetchone()[0],
+                   source=source, catalog_version=version, cached=False, network_actors=len(a),
+                   direct_movies=len(a.get(start, ())),
+                   cast_complete=json.loads(report[0]).get('cast_complete', False) if report else False)
+        if out['status'] == 'complete':
+            out['farthest_path'] = [dict(kind=kind, entity_id=entity_id,
+                label=c.execute('SELECT '+('name FROM people' if kind=='actor' else 'title FROM films')+' WHERE id=?',
+                                (entity_id,)).fetchone()[0]) for kind, entity_id in out['farthest_path']]
+            _DISTANCE_CACHE[key] = out
+            while len(_DISTANCE_CACHE) > 128:
+                _DISTANCE_CACHE.popitem(last=False)
+        return dict(out)

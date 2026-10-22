@@ -137,6 +137,8 @@ def create_app(config=None):
             genre_list=db.genres(c)
             counts=db.stats(c,f.get('source','movies')) if not errors and flags['dashboard'] and page_type in dashboard.DEFAULTS else None
             dashboard_data=dashboard.cards(counts,result,db.SOURCES[f['source']],page_type,flags) if counts is not None else None
+            if page_type=='differences' and flags['dashboard'] and not errors:
+                dashboard_data=dashboard.difference_cards(result)
         page=int(f.get('page') or 1) if not errors else 1
         def page_url(n):return url_for(page_type)+'?'+urlencode({**dict(request.args),'page':n})
         return render_template('listing.html',page_type=page_type,filters=f,errors=errors,result=result,genres=genre_list,
@@ -406,7 +408,16 @@ def create_app(config=None):
             except valid.ValidationError as e:errors=e.errors
         with connected() as c:
             labels={key:(c.execute('SELECT name FROM people WHERE id=?',(f.get(key),)).fetchone() or [''])[0] for key in ('start','end')}
-        return render_template('degrees.html',page_type='degrees',filters=f,errors=errors,graph_result=result,actor_labels=labels),400 if errors else 200
+        return render_template('degrees.html',page_type='degrees',filters=f,errors=errors,graph_result=result,actor_labels=labels,dashboard_data=dashboard.degree_cards() if flags['dashboard'] else None),400 if errors else 200
+
+    @app.route('/api/actor-statistics')
+    def actor_statistics_api():
+        with connected() as c:
+            f=valid.query(request.args,'degrees',c)
+            if f['start'] is None:raise valid.ValidationError({'start':'Select a starting actor.'})
+            out=graph.actor_statistics(c,app.config['DATABASE'],f['start'],f['source'])
+            out['dashboard']=dashboard.degree_cards(out)
+            return jsonify(out)
 
     @app.route('/api/actors')
     def actors_api():

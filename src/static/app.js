@@ -14,6 +14,7 @@ for (const input of document.querySelectorAll('[data-actor-target]')) {
   let timer, controller, sequence = 0;
   input.addEventListener('input', () => {
     clearTimeout(timer); controller?.abort(); target.value = ''; options.replaceChildren();
+    target.dispatchEvent(new Event('change', {bubbles:true}));
     const seq = ++sequence;
     if (input.value.trim().length < 2) return;
     timer = setTimeout(async () => {
@@ -28,6 +29,7 @@ for (const input of document.querySelectorAll('[data-actor-target]')) {
           button.textContent = `${actor.name} · ID ${actor.id} · ${actor.movie_count} movies`;
           button.addEventListener('click', () => {
             target.value = actor.id; input.value = actor.name; options.replaceChildren();
+            target.dispatchEvent(new Event('change', {bubbles:true}));
             const hint = wrapper.querySelector('.hint'); if (hint) hint.textContent = `Selected ID: ${actor.id}`;
           }); options.append(button);
         }

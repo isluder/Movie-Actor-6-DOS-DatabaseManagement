@@ -363,6 +363,86 @@ class AppTest(unittest.TestCase):
             self.assertLess(c.execute('SELECT MIN(id) FROM films').fetchone()[0],0)
             self.assertEqual(c.execute("SELECT COUNT(*) FROM people WHERE name='Same Name'").fetchone()[0],3)
 
+    def test_distance_statistics_exact_component_and_limits(self):
+        # Chain reaches beyond six; movies are visited once even with cycles/duplicate roles.
+        a={i:[] for i in range(1,10)};m={}
+        for i in range(1,8):
+            m[i]=[i,i+1];a[i].append(i);a[i+1].append(i)
+        m[20]=[1,2];a[1].append(20);a[2].append(20)
+        r=graph.distance_distribution(a,m,1,9)
+        self.assertEqual(r['connected'],7)
+        self.assertEqual(r['disconnected'],1)
+        self.assertEqual(r['average'],4)
+        self.assertEqual(r['maximum'],7)
+        self.assertEqual(r['within_six'],6)
+        self.assertEqual(r['beyond_six'],1)
+        self.assertEqual(r['farthest_actor'],8)
+        self.assertEqual(r['farthest_count'],1)
+        self.assertEqual(r['farthest_path'][0],('actor',1))
+        self.assertEqual(r['farthest_path'][-1],('actor',8))
+        self.assertEqual(len(r['farthest_path']),15)
+        tied=graph.distance_distribution({1:[1],2:[1],3:[1]},{1:[1,2,3]},1,3)
+        self.assertEqual((tied['maximum'],tied['farthest_actor'],tied['farthest_count']),(1,2,2))
+        self.assertEqual(sum(x['actors'] for x in r['distribution']),7)
+        isolated=graph.distance_distribution(a,m,9,9)
+        self.assertEqual((isolated['connected'],isolated['disconnected']),(0,8))
+        self.assertIsNone(isolated['average']);self.assertIsNone(isolated['maximum'])
+        interrupted=graph.distance_distribution(a,m,1,9,seconds=-1)
+        self.assertEqual(interrupted['status'],'interrupted')
+        for key in ('disconnected','average','connected'):self.assertIsNone(interrupted[key])
+
+    def test_actor_statistics_endpoint_cache_sources_and_features(self):
+        url='/api/actor-statistics?start=10'
+        r=self.client.get(url)
+        self.assertEqual(r.status_code,200)
+        data=r.json
+        self.assertEqual((data['connected'],data['disconnected'],data['average']),(2,0,1.5))
+        self.assertEqual(data['distribution'],[dict(degrees=1,actors=1),dict(degrees=2,actors=1)])
+        self.assertEqual(data['farthest_path'][-1]['label'],'Third Actor')
+        self.assertEqual(len(data['farthest_path']),5)
+        self.assertTrue(self.client.get(url).json['cached'])
+        with db.connection(self.path) as c:
+            c.execute("INSERT INTO people(id,name) VALUES(99,'Isolated')")
+            c.execute("INSERT INTO cast_suppressions(movie_id,actor_id,role,source) VALUES(2,12,'Lead','movies')")
+            db.bump_version(c)
+        revised=self.client.get(url+'&source=movies').json
+        self.assertFalse(revised['cached'])
+        self.assertEqual((revised['connected'],revised['disconnected']),(1,2))
+        self.assertNotEqual(revised['catalog_version'],data['catalog_version'])
+        self.assertEqual(self.client.get(url+'&source=tmdb').json['connected'],2)
+        alone=self.client.get('/api/actor-statistics?start=99').json
+        self.assertEqual((alone['connected'],alone['disconnected']),(0,3))
+        self.assertIsNone(alone['average'])
+        for args in ('','?start=NaN','?start=10000','?start=10&source=invalid'):
+            self.assertEqual(self.client.get('/api/actor-statistics'+args).status_code,400)
+        disabled=self.feature_app({'six_degrees':False}).test_client()
+        self.assertEqual(disabled.get(url).status_code,404)
+        no_cards=self.feature_app({'dashboard':False}).test_client().get('/six-degrees?start=10')
+        self.assertNotIn(b'id="dashboard-data"',no_cards.data)
+        self.assertIn(b'id="distance-chart"',no_cards.data)
+        page=self.client.get('/six-degrees?start=10')
+        self.assertEqual(self.dashboard_payload(page)['page'],'degrees')
+        self.assertIn(b'distances.js',page.data)
+
+    def test_difference_dashboard_full_set_and_vote_only(self):
+        with db.connection(self.path) as c:
+            for i in range(100,130):
+                c.execute('INSERT INTO films(id,title) VALUES(?,?)',(i,'Vote only '+str(i)))
+                for source,votes in [('movies',100),('tmdb',200)]:
+                    c.execute('INSERT INTO film_values(movie_id,source,title,budget,revenue,vote_average,vote_count,signature) VALUES(?,?,?,?,?,?,?,?)',
+                              (i,source,'Vote only '+str(i),1,2,8,votes,'test'))
+        for page in (1,2):
+            payload=self.dashboard_payload(self.client.get('/source-differences?page='+str(page)))
+            metrics={m['id']:m['value'] for m in payload['metrics']}
+            self.assertEqual((metrics['matches'],metrics['substantive'],metrics['votes_only']),(32,2,30))
+            self.assertEqual(metrics['vote_average'],2)
+        filtered=self.dashboard_payload(self.client.get('/source-differences?field=vote_average'))
+        self.assertEqual({m['id']:m['value'] for m in filtered['metrics']}['votes_only'],0)
+        empty=self.dashboard_payload(self.client.get('/source-differences?title=NotInFixture'))
+        self.assertTrue(all(m['value']==0 for m in empty['metrics']))
+        disabled=self.feature_app({'dashboard':False}).test_client()
+        self.assertNotIn(b'id="dashboard-data"',disabled.get('/source-differences').data)
+
     def test_graph_paths_limits_and_invalidation(self):
         result=self.client.get('/api/connections?start=10&end=12').json
         self.assertEqual(result['status'],'found');self.assertEqual(result['degrees'],2)

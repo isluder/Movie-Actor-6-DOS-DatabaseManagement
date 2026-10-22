@@ -5,7 +5,7 @@ application_features:
   Movie Search: Enable
   Hidden Gems: Enable
   Bombed at the Box Office: Enable
-  Source Differences: Enable
+  Source Differences: Disable
   Six Degrees: Enable
   Interactive Graph: Enable
   Dashboard Statistics: Enable
@@ -15,8 +15,8 @@ application_features:
   Registration: Disable
   Password Changes: Disable
   Saved Searches: Disable
-  Catalog Editing: Enable
-  Catalog Imports: Enable
+  Catalog Editing: Disable
+  Catalog Imports: Disable
 
 # Accounts controls login/logout. Disabling it also disables Registration,
 # Password Changes, Saved Searches, Catalog Editing, and web Catalog Imports.

@@ -161,19 +161,24 @@ def movie_detail(c, movie_id):
     return d
 
 def difference_rows(c, f):
-    fields=['title','budget','revenue','vote_average','vote_count']
-    field=f.get('field')
-    tests=['COUNT(DISTINCT v.'+x+')>1 OR (COUNT(v.'+x+')>0 AND COUNT(v.'+x+')<COUNT(*))' for x in (fields if not field else [field])]
-    sql='''SELECT f.id,f.title FROM films f JOIN film_values v ON v.movie_id=f.id WHERE f.hidden=0 AND
+    fields = ['title', 'budget', 'revenue', 'vote_average', 'vote_count']
+    expressions = {x: f'(COUNT(DISTINCT v.{x})>1 OR (COUNT(v.{x})>0 AND COUNT(v.{x})<COUNT(*)))' for x in fields}
+    grouped = """SELECT f.id,f.title,""" + ','.join(expressions[x]+' AS '+x+'_diff' for x in fields) + """
+        FROM films f JOIN film_values v ON v.movie_id=f.id WHERE f.hidden=0 AND
         EXISTS(SELECT 1 FROM film_values q WHERE q.movie_id=f.id AND q.title LIKE :title)
-        GROUP BY f.id HAVING '''+' OR '.join('('+t+')' for t in tests)
-    p={'title':'%'+f.get('title','')+'%','offset':(f['page']-1)*25}
-    total=c.execute('SELECT COUNT(*) FROM ('+sql+')',p).fetchone()[0]
-    rows=dictionaries(c.execute(sql+' ORDER BY f.title COLLATE NOCASE,f.id LIMIT 25 OFFSET :offset',p))
+        GROUP BY f.id"""
+    predicate = ' OR '.join(x+'_diff' for x in (fields if not f.get('field') else [f['field']]))
+    sql = 'SELECT * FROM (' + grouped + ') WHERE ' + predicate
+    substantive = '(title_diff OR budget_diff OR revenue_diff OR vote_average_diff)'
+    p = {'title': '%'+f.get('title','')+'%', 'offset': (f['page']-1)*25}
+    summary = dict(c.execute('SELECT COUNT(*) AS matches, COALESCE(SUM('+substantive+'),0) AS substantive, '
+        'COALESCE(SUM(vote_count_diff AND NOT '+substantive+'),0) AS votes_only, '+
+        ','.join('COALESCE(SUM('+x+'_diff),0) AS '+x for x in fields)+' FROM ('+sql+')', p).fetchone())
+    rows = dictionaries(c.execute(sql+' ORDER BY title COLLATE NOCASE,id LIMIT 25 OFFSET :offset', p))
     for r in rows:
-        r['sources']=dictionaries(c.execute('SELECT * FROM film_values WHERE movie_id=? ORDER BY source,id',(r['id'],)))
-        r['differing']=[x for x in fields if len({v[x] for v in r['sources']})>1]
-    return dict(rows=rows,total=total,size=25,sql=sql)
+        r['sources'] = dictionaries(c.execute('SELECT * FROM film_values WHERE movie_id=? ORDER BY source,id', (r['id'],)))
+        r['differing'] = [x for x in fields if r[x+'_diff']]
+    return dict(rows=rows,total=summary['matches'],size=25,sql=sql,summary=summary)
 
 def audit(c,movie_id,user_id,action,details):
     c.execute('INSERT INTO edit_history(movie_id,user_id,action,details) VALUES(?,?,?,?)',(movie_id,user_id,action,json.dumps(details)))

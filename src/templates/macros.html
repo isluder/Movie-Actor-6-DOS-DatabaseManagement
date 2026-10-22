@@ -11,7 +11,7 @@
 {% macro pagination(page,result,page_url) %}<div class="pagination"><span>{{ result.total }} matches · Page {{ page }} of {{ [(result.total/result.size)|round(0,'ceil')|int,1]|max }}</span>{% if page>1 %}<a class="btn btn-secondary" href="{{ page_url(page-1) }}">Previous</a>{% endif %}{% if page*result.size<result.total %}<a class="btn btn-secondary" href="{{ page_url(page+1) }}">Next</a>{% endif %}</div>{% endmacro %}
 
 {% macro dashboard(data) %}
-<section class="dashboard" aria-label="Dashboard statistics">
+<section class="dashboard dashboard-{{ data.page }}" aria-label="Dashboard statistics">
 <div class="dashboard-heading"><p class="eyebrow">At a glance <span>· Click any card to customize</span></p><button type="button" class="text-button" id="dashboard-reset">Reset cards</button></div>
 <div class="stats-grid dashboard-grid">
 {% for key in data.defaults %}{% set metric=data.metrics|selectattr('id','equalto',key)|first %}

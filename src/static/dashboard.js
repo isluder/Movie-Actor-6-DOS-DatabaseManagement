@@ -2,8 +2,8 @@
 (() => {
   const dataElement = document.getElementById('dashboard-data');
   if (!dataElement) return;
-  const data = JSON.parse(dataElement.textContent);
-  const metrics = new Map(data.metrics.map(metric => [metric.id, metric]));
+  let data = JSON.parse(dataElement.textContent);
+  let metrics = new Map(data.metrics.map(metric => [metric.id, metric]));
   const cards = [...document.querySelectorAll('[data-stat-slot]')];
   const dialog = document.getElementById('stat-dialog');
   const select = document.getElementById('stat-metric');
@@ -60,6 +60,14 @@
   });
   document.getElementById('dashboard-reset').addEventListener('click', () => {
     choices = [...data.defaults];render();persist('Default statistics restored.');
+  });
+  dataElement.addEventListener('statistics-update', event => {
+    if (event.detail.page !== data.page) return;
+    data = event.detail;
+    metrics = new Map(data.metrics.map(metric => [metric.id, metric]));
+    choices = choices.map((key, slot) => metrics.has(key) ? key : data.defaults[slot]);
+    if (!metrics.has(select.value)) select.value = choices[activeSlot];
+    render();preview();
   });
   render();
 })();

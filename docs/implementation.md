@@ -181,3 +181,26 @@ values after filtering, resets, stale preferences, and unavailable browser stora
 Browser verification on a temporary local preview confirmed card customization and
 reload persistence. The existing app server was left running without interruption;
 restart it to load the updated Python code and templates.
+
+## Connection distribution and comparison dashboard
+
+Added full-filter, full-set comparison cards, including vote-only counts and
+per-field counts. Six Degrees now loads an exact connected-component distance
+histogram asynchronously for its From actor and selected cast source. It counts
+all catalog identities in the unreachable denominator, excludes self/unreachable
+actors from the mean, reports distances beyond six separately, and shows a full
+shortest route to a deterministic farthest actor with the number of actors tied.
+BFS traverses movie casts without generating actor cliques. Bounded version-keyed
+summary caching, interruption semantics, and stale browser-response rejection are
+covered by tests; existing graph search and display bounds are unchanged.
+
+Full-catalog observation: Tom Hanks, combined network, reaches 199,871 other
+actors; 6,858 are unreachable, mean distance 2.6713, maximum eight (24 tied),
+49 reachable actors beyond six. One deterministic farthest actor is Abbas
+Kiarostami. Initial calculation including adjacency load was ~2.3s, traversal
+~0.17s. Cached repeats were below a millisecond in a local direct call.
+
+Verification: 27 Python tests and dashboard, graph, and distance JavaScript checks
+pass. Browser preview verified live statistics, comparison customization, the
+distance chart, and the eight-degree farthest route. Screenshots are retained in
+`docs/screenshots/difference-statistics.png` and `distance-distribution.png`.

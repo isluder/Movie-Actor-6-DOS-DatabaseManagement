@@ -620,3 +620,26 @@ body{
 @media(min-width:1450px) {
   .search-panel[data-page="bombs"] .filter-grid {grid-template-columns:repeat(6,minmax(0,1fr))}
 }
+
+.distance-panel { margin-bottom: 1.5rem; }
+.distance-panel h2 { margin: 0; }
+#distance-chart { overflow-x: auto; }
+.distance-table { width: 100%; table-layout: fixed; }
+.distance-table caption { text-align: left; color: #aab4c7; font-size: .85rem; padding: .5rem 0; }
+.distance-table th:first-child { width: 110px; }
+.distance-table th:last-child { width: 180px; }
+.distance-table td, .distance-table tbody th { padding: .4rem .8rem; font-size: .85rem; border: 0; }
+.distance-table tbody th { text-align: left; font-weight: 500; }
+.distance-table td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.distance-bar { display: block; height: 17px; min-width: 2px; border-radius: 4px; background: linear-gradient(90deg, #447cb7, #85b7f0); }
+.distance-bar.beyond-six { background: linear-gradient(90deg, #a37425, #edbd60); }
+@media (max-width: 600px) {
+  .distance-table th:first-child { width: 80px; }
+  .distance-table th:last-child { width: 120px; }
+  .distance-table td, .distance-table tbody th { padding: .3rem; }
+}
+
+.farthest-connection:not(:empty) { border-top: 1px solid #343e52; margin-top: 1rem; padding-top: 1rem; }
+.farthest-connection h3 { margin: 0 0 .5rem; }
+
+.dashboard-degrees .stat-card-editable { min-height: 135px; padding: 1rem 1.2rem; }
