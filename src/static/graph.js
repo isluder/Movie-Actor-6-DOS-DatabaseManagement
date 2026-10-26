@@ -7,7 +7,7 @@
   let cy, activeData, pinned = false, sequence = 0, controller, expansionController, timer;
   let expanding = false;
   const pages = new Map();
-  const sourceNames = {movies:'The Movies Dataset',tmdb:'TMDB 5000',demo:'Demo',local:'Local addition'};
+  const sourceNames = {movies:'The Movies Dataset',tmdb:'TMDB 5000',demo:'Demo',manual:'Manual entries'};
 
   function detail(data) {
     details.replaceChildren();
@@ -75,6 +75,12 @@
     }
   }
 
+  document.addEventListener?.('themechange', () => {
+    if (cy && !cy.destroyed()) {
+      cy.style().selector('node').style('color', document.documentElement.dataset.theme === 'light' ? '#243249' : '#edf1fa').update();
+    }
+  });
+
   function render(data) {
     if (!data) return;
     expansionController?.abort();expanding=false;pages.clear();activeData=data;
@@ -90,7 +96,7 @@
     cy?.destroy();
     if (!window.cytoscape) {status.textContent+=' Graph library unavailable; the textual path remains usable.';return;}
     cy=cytoscape({container:document.getElementById('graph'),elements:[...data.nodes,...data.edges],
-      style:[{selector:'node',style:{label:'','font-size':11,color:'#edf1fa','text-wrap':'wrap','text-max-width':110,'background-color':'#76a4e7',width:30,height:30,'text-valign':'bottom','text-margin-y':7}},
+      style:[{selector:'node',style:{label:'','font-size':11,color:document.documentElement?.dataset.theme === 'light' ? '#243249' : '#edf1fa','text-wrap':'wrap','text-max-width':110,'background-color':'#76a4e7',width:30,height:30,'text-valign':'bottom','text-margin-y':7}},
         {selector:'node[kind="movie"]',style:{shape:'diamond','background-color':'#a887cf',width:35,height:35}},
         {selector:'edge',style:{width:1,'line-color':'#566581','curve-style':'haystack'}},
         {selector:'edge[?on_path]',style:{'line-color':'#efc367',width:4}},

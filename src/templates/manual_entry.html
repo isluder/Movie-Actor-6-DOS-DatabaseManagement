@@ -1,0 +1,20 @@
+{% extends 'base.html' %}{% import 'macros.html' as m with context %}{% block content %}
+<header class="page-heading"><div><p class="eyebrow">Build the catalog</p><h1>Manual Entry</h1><p class="page-intro">Add a movie, or add your own values to an existing movie. Entries appear under the Manual entries source.</p></div></header>
+{{ m.errors(errors) }}
+<form method="post" class="panel" id="manual-entry-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<h2>Movie details</h2><div class="filter-grid">
+{{ m.input('movie_id','Existing movie ID (optional)',values,placeholder='Blank creates a new movie') }}
+{{ m.input('title','Movie title',values) }}
+{{ m.input('budget','Budget',values,'number') }}
+{{ m.input('revenue','Revenue',values,'number') }}
+{{ m.input('vote_average','Rating (0–10)',values,'number') }}
+{{ m.input('vote_count','Vote count',values,'number') }}
+</div><p class="hint">Leave unknown numbers blank. Existing movie IDs keep their imported values; your values are stored separately.</p>
+<h2>Genres</h2><div class="genre-choices">{% for genre in genres %}<label><input type="checkbox" name="genre_ids" value="{{ genre.id }}" {% if genre.id|string in values.getlist('genre_ids') %}checked{% endif %}> {{ genre.name }}</label>{% endfor %}</div>
+<h2>Cast (optional)</h2><p class="hint">For each row, enter an existing actor ID or a new actor name, then a character. Different actors can share a name.</p>
+<div id="manual-cast-rows">{% for actor_id,actor_name,role in cast_rows %}<div class="manual-cast-row"><label>Existing actor ID<input name="actor_id" value="{{ actor_id }}" inputmode="numeric"></label><label>New actor name<input name="actor_name" value="{{ actor_name }}" maxlength="300"></label><label>Character<input name="role" value="{{ role }}" maxlength="1000"></label><button type="button" class="btn btn-secondary btn-sm" data-remove-cast aria-label="Remove cast row">Remove</button></div>{% endfor %}</div>
+<template id="manual-cast-template"><div class="manual-cast-row"><label>Existing actor ID<input name="actor_id" inputmode="numeric"></label><label>New actor name<input name="actor_name" maxlength="300"></label><label>Character<input name="role" maxlength="1000"></label><button type="button" class="btn btn-secondary btn-sm" data-remove-cast aria-label="Remove cast row">Remove</button></div></template>
+<button type="button" class="btn btn-secondary btn-sm" id="add-cast-row">Add cast row</button>
+<div class="form-actions"><button class="btn btn-primary">Save entry</button></div><p class="hint">Catalog rebuilds replace manual entries too. A backup is created before each rebuild.</p>
+</form>
+{% endblock %}

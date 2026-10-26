@@ -17,10 +17,9 @@ def adjacency(c, path, source):
         if key in _CACHE:
             _CACHE.move_to_end(key);return _CACHE[key]
     a=defaultdict(list);m=defaultdict(list)
-    sql='''SELECT DISTINCT cr.movie_id,cr.actor_id FROM cast_roles cr JOIN films f ON f.id=cr.movie_id
-        WHERE f.hidden=0 AND NOT EXISTS(SELECT 1 FROM cast_suppressions cs WHERE cs.movie_id=cr.movie_id AND cs.actor_id=cr.actor_id AND cs.role=cr.role AND cs.source=cr.source)'''
+    sql='SELECT DISTINCT cr.movie_id,cr.actor_id FROM cast_roles cr'
     params=[]
-    if source!='both':sql+=' AND cr.source=?';params=[source]
+    if source!='both':sql+=' WHERE cr.source=?';params=[source]
     for mid,aid in c.execute(sql+' ORDER BY cr.movie_id,cr.actor_id',params):
         a[aid].append(mid);m[mid].append(aid)
     with _LOCK:
@@ -100,7 +99,7 @@ def describe(c,a,nodes,pairs,path,source,path_edges):
     by_movie=defaultdict(dict)
     if movies:
         placeholders=','.join('?' for _ in movies)
-        sql=f'SELECT cr.* FROM cast_roles cr WHERE movie_id IN ({placeholders}) AND NOT EXISTS(SELECT 1 FROM cast_suppressions cs WHERE cs.movie_id=cr.movie_id AND cs.actor_id=cr.actor_id AND cs.role=cr.role AND cs.source=cr.source)'
+        sql=f'SELECT cr.* FROM cast_roles cr WHERE movie_id IN ({placeholders})'
         params=list(sorted(movies))
         if source!='both':sql+=' AND source=?';params.append(source)
         for r in c.execute(sql,params):

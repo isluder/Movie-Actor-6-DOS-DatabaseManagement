@@ -14,26 +14,15 @@ LABELS = {
     'interactive_graph': 'Interactive Graph',
     'dashboard': 'Dashboard Statistics',
     'sql_previews': 'SQL Previews',
-    'source_provenance': 'Source Provenance',
-    'accounts': 'Accounts',
-    'registration': 'Registration',
-    'password_changes': 'Password Changes',
-    'saved_searches': 'Saved Searches',
-    'catalog_editing': 'Catalog Editing',
-    'catalog_imports': 'Catalog Imports',
+    'sql_search': 'SQL Search',
+    'manual_entry': 'Manual Entry',
 }
 PAGE_FEATURES = {'index': 'movie_search', 'gems': 'hidden_gems', 'bombs': 'box_office',
                  'differences': 'source_differences', 'degrees': 'six_degrees'}
 ENDPOINT_FEATURES = {
     **PAGE_FEATURES,
-    'source_record': 'source_provenance',
-    'register': 'registration', 'login': 'accounts', 'logout': 'accounts',
-    'password': 'password_changes',
-    'saved_queries': 'saved_searches', 'open_query': 'saved_searches', 'update_query': 'saved_searches',
-    'add_movie_route': 'catalog_editing', 'edit_movie_route': 'catalog_editing',
-    'delete_movie_route': 'catalog_editing', 'edit_genres': 'catalog_editing',
-    'add_cast_route': 'catalog_editing', 'remove_cast_route': 'catalog_editing',
-    'imports': 'catalog_imports', 'connections_api': 'six_degrees',
+    'sql_search': 'sql_search', 'manual_entry': 'manual_entry',
+    'connections_api': 'six_degrees',
     'expand_node_api': 'interactive_graph', 'actor_statistics_api': 'six_degrees',
 }
 
@@ -72,9 +61,6 @@ def load_features(path=DEFAULT_CONFIG, overrides=None):
         if not isinstance(overrides, dict) or set(overrides) - set(LABELS):
             raise ValueError('Unknown FEATURES override.')
         flags.update({key: _enabled(value, key) for key, value in overrides.items()})
-    if not flags['accounts']:
-        for key in ('registration', 'password_changes', 'saved_searches', 'catalog_editing', 'catalog_imports'):
-            flags[key] = False
     if not flags['six_degrees']:
         flags['interactive_graph'] = False
     return flags

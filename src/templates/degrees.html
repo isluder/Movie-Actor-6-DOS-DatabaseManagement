@@ -18,7 +18,6 @@
 <section class="panel distance-panel" aria-labelledby="distance-title"><div class="results-heading"><div><p class="eyebrow">The reach of one actor</p><h2 id="distance-title">Connection distance distribution</h2></div><span class="source-pill" id="distance-source">Selected cast network</span></div>
 <p id="distance-status" role="status">Select a From actor to see their reach across the catalog.</p>
 <div id="distance-chart"></div><div id="farthest-connection" class="farthest-connection"></div><p class="hint">One shared movie = one degree. Counts cover all reachable other actors, beyond the six-degree path-search limit. Actors not connected are counted separately. The starting actor is excluded. These are connections in the imported catalog.</p></section>
-{% if not errors %}{{ m.save('degrees',filters,g.user,csrf_token) }}{% endif %}
 {% if features.interactive_graph %}
 <p id="graph-status" role="status"></p><ol id="text-path" class="text-path"></ol>
 <div class="graph-toolbar"><button class="btn btn-secondary" id="graph-reset" type="button">Fit graph</button><button class="btn btn-secondary" id="graph-path-only" type="button">Path only</button><span>Circles: actors · Diamonds: movies · Gold: shortest path · Double-click to expand</span></div>

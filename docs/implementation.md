@@ -1,3 +1,8 @@
+# Historical implementation notes
+
+These notes describe the application before the seven-table simplification.
+For the current implementation, setup, schema, and tests, see [README](../README.md).
+
 # Implementation and verification — October 21, 2026
 
 The app now uses explicit catalog imports, preserved source records, private saved

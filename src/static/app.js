@@ -1,12 +1,4 @@
 'use strict';
-document.addEventListener('submit', event => {
-  const text = event.target.dataset.confirm;
-  if (text && !window.confirm(text)) event.preventDefault();
-});
-document.addEventListener('click', event => {
-  const button = event.target.closest('[data-confirm-button]');
-  if (button && !window.confirm(button.dataset.confirmButton)) event.preventDefault();
-});
 for (const input of document.querySelectorAll('[data-actor-target]')) {
   const wrapper = input.closest('.actor-picker');
   const options = wrapper.querySelector('.actor-options');
@@ -37,11 +29,42 @@ for (const input of document.querySelectorAll('[data-actor-target]')) {
     }, 200);
   });
 }
-for (const select of document.querySelectorAll('.saved-choice')) {
-  const form = select.closest('form');
-  function populate() {
-    const option = select.selectedOptions[0];
-    if (select.value) {form.elements.name.value = option.dataset.name;form.elements.note.value = option.dataset.note;}
+
+const siteMenu = document.getElementById('site-menu');
+if (siteMenu) {
+  document.addEventListener('click', event => {
+    if (!siteMenu.contains(event.target)) siteMenu.open = false;
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && siteMenu.open) {
+      siteMenu.open = false;
+      siteMenu.querySelector('summary').focus();
+    }
+  });
+}
+const castRows = document.getElementById('manual-cast-rows');
+if (castRows) {
+  document.getElementById('add-cast-row').addEventListener('click', () => {
+    if (castRows.children.length >= 100) return;
+    castRows.append(document.getElementById('manual-cast-template').content.cloneNode(true));
+    castRows.lastElementChild.querySelector('input').focus();
+  });
+  castRows.addEventListener('click', event => {
+    if (event.target.closest('[data-remove-cast]')) event.target.closest('.manual-cast-row').remove();
+  });
+}
+
+const sqlExamples = document.getElementById('sql-examples');
+if (sqlExamples) {
+  const examples = JSON.parse(sqlExamples.textContent);
+  const editor = document.getElementById('sql');
+  for (const button of document.querySelectorAll('[data-sql-example]')) {
+    button.addEventListener('click', () => {
+      const example = examples[Number(button.dataset.sqlExample)];
+      editor.value = example.sql;
+      editor.focus();
+      editor.setSelectionRange(0, 0);
+      document.getElementById('sql-example-status').textContent = `Loaded ${example.label}. Edit the query, then choose Run query.`;
+    });
   }
-  select.addEventListener('change',populate);populate();
 }

@@ -1,15 +1,15 @@
 """Explicitly closed SQLite transactions and source-aware catalog queries."""
 from contextlib import contextmanager
 from pathlib import Path
-import json
 import sqlite3
 import uuid
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = str(BASE_DIR / 'movies.db')
-SOURCES = {'movies': 'The Movies Dataset', 'tmdb': 'TMDB 5000', 'demo': 'Demo', 'local': 'Local additions'}
+SCHEMA_VERSION = '3'
+SOURCES = {'movies': 'The Movies Dataset', 'tmdb': 'TMDB 5000', 'demo': 'Demo', 'manual': 'Manual entries'}
 GEMS = dict(min_rating=7.4, min_votes=50, max_votes=4500, max_budget=35_000_000)
-CATALOG_TABLES = ['cast_suppressions','edit_history','local_overrides','film_genres','cast_roles','actor_names','film_values','source_records','source_files','catalog_genres','people','films','import_runs','catalog_meta']
+CATALOG_TABLES = ['film_genres','cast_roles','film_values','catalog_genres','people','films','catalog_meta']
 
 @contextmanager
 def connection(db_path=DB_PATH):
@@ -29,11 +29,19 @@ get_connection = connection
 
 def init_db(db_path=DB_PATH):
     with connection(db_path) as c:
+        if c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='catalog_meta'").fetchone():
+            if version(c)!='uninitialized' and schema_version(c)!=SCHEMA_VERSION:
+                raise ValueError('Older catalog schema: run src/ingest_data.py rebuild --dataset both --confirm.')
         c.executescript((BASE_DIR / 'schema.sql').read_text())
 
 def version(c):
     r = c.execute("SELECT value FROM catalog_meta WHERE key='version'").fetchone()
     return r[0] if r else 'uninitialized'
+
+def schema_version(c):
+    row=c.execute("SELECT value FROM catalog_meta WHERE key='schema_version'").fetchone()
+    return row[0] if row else None
+
 
 def bump_version(c):
     c.execute("INSERT INTO catalog_meta VALUES('version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (uuid.uuid4().hex,))
@@ -45,23 +53,16 @@ def genres(c):
     return dictionaries(c.execute('SELECT * FROM catalog_genres ORDER BY name'))
 
 def cast_preview(c,movie_id,source):
-    """Use original credit order, skipping hidden roles and duplicate performers."""
-    visible={r['id']:dict(r) for r in c.execute('''SELECT p.id,p.name FROM cast_roles cr JOIN people p ON p.id=cr.actor_id
-        WHERE cr.movie_id=? AND NOT EXISTS(SELECT 1 FROM cast_suppressions cs WHERE cs.movie_id=cr.movie_id
-        AND cs.actor_id=cr.actor_id AND cs.role=cr.role AND cs.source=cr.source)
-        GROUP BY p.id ORDER BY p.name COLLATE NOCASE,p.id''',(movie_id,))}
-    ordered=[];seen=set()
-    records=c.execute('''SELECT r.parsed FROM source_records r JOIN source_files sf ON sf.id=r.file_id
-        WHERE r.movie_id=? AND sf.kind='credits' AND r.parsed IS NOT NULL
-        ORDER BY (sf.source=?) DESC,sf.source,r.row_number,r.id''',(movie_id,source))
-    for record in records:
-        for actor in json.loads(record['parsed']):
-            aid=actor['actor_id']
-            if aid in visible and aid not in seen:
-                ordered.append(visible[aid]);seen.add(aid)
-                if len(ordered)==3:return ordered
-    ordered.extend(actor for aid,actor in visible.items() if aid not in seen)
-    return ordered[:3]
+    """Prefer the selected source's credit order, with each performer shown once."""
+    rows=c.execute("""SELECT p.id,p.name FROM cast_roles cr JOIN people p ON p.id=cr.actor_id
+        WHERE cr.movie_id=? ORDER BY (cr.source=?) DESC,cr.source,cr.credit_order,p.id""",(movie_id,source))
+    seen=set();out=[]
+    for row in rows:
+        if row['id'] not in seen:
+            seen.add(row['id']);out.append(dict(row))
+            if len(out)==3:break
+    return out
+
 
 def suggestions(c, text):
     if not text.strip():
@@ -69,20 +70,25 @@ def suggestions(c, text):
     # Prefix lookups use indexed names, substring matches remain supported.
     return dictionaries(c.execute('''SELECT p.id,p.name,COUNT(DISTINCT cr.movie_id) movie_count
         FROM people p LEFT JOIN cast_roles cr ON cr.actor_id=p.id
-        WHERE p.id IN (SELECT id FROM people WHERE name LIKE ? UNION SELECT actor_id FROM actor_names WHERE name LIKE ?)
+        WHERE p.name LIKE ?
         GROUP BY p.id ORDER BY (p.name LIKE ?) DESC,p.name,p.id LIMIT 20''',
-        ('%'+text.strip()+'%', '%'+text.strip()+'%',text.strip()+'%')))
+        ('%'+text.strip()+'%',text.strip()+'%')))
 
-METRICS = '''WITH chosen AS (
- SELECT movie_id,source,title,CASE WHEN variants=1 THEN budget END budget,CASE WHEN variants=1 THEN revenue END revenue,CASE WHEN variants=1 THEN vote_average END vote_average,CASE WHEN variants=1 THEN vote_count END vote_count,variants,0 overridden FROM source_metrics
- WHERE source=:source AND NOT EXISTS(SELECT 1 FROM local_overrides o WHERE o.movie_id=source_metrics.movie_id AND o.source=:source)
- UNION ALL SELECT movie_id,source,title,budget,revenue,vote_average,vote_count,1,1 FROM local_overrides WHERE source=:source
+# Ambiguous rows within one source remain visible for comparison, but do not
+# supply numerical values to filters, summaries or financial calculations.
+METRICS = """WITH chosen AS (
+ SELECT movie_id,source,MIN(title) title,COUNT(*) variants,
+ CASE WHEN COUNT(*)=1 THEN MIN(budget) END budget,
+ CASE WHEN COUNT(*)=1 THEN MIN(revenue) END revenue,
+ CASE WHEN COUNT(*)=1 THEN MIN(vote_average) END vote_average,
+ CASE WHEN COUNT(*)=1 THEN MIN(vote_count) END vote_count
+ FROM film_values WHERE source=:source GROUP BY movie_id,source
 ), metrics AS (
- SELECT f.id,f.title display_title,m.title,m.budget,m.revenue,m.vote_average,m.vote_count,m.variants,m.overridden,
+ SELECT f.id,f.title display_title,m.title,m.budget,m.revenue,m.vote_average,m.vote_count,m.variants,
  CASE WHEN m.budget>0 AND m.revenue>0 THEN m.revenue-m.budget END net_profit,
  CASE WHEN m.budget>0 AND m.revenue>0 THEN 100.0*(m.revenue-m.budget)/m.budget END roi_percent
- FROM films f LEFT JOIN chosen m ON f.id=m.movie_id WHERE f.hidden=0
-) '''
+ FROM films f LEFT JOIN chosen m ON f.id=m.movie_id
+) """
 
 def query_movies(c, page_type, f):
     p = dict(f)
@@ -92,9 +98,9 @@ def query_movies(c, page_type, f):
         conditions[-1] = '('+conditions[-1]+')'
         p['title_pattern']='%'+f['title']+'%'
     if f.get('actor') or f.get('actor_id') or f.get('character'):
-        cast_conditions=['cr.movie_id=m.id', 'NOT EXISTS(SELECT 1 FROM cast_suppressions cs WHERE cs.movie_id=cr.movie_id AND cs.actor_id=cr.actor_id AND cs.role=cr.role AND cs.source=cr.source)']
+        cast_conditions=['cr.movie_id=m.id']
         if f.get('actor'):
-            cast_conditions.append('EXISTS(SELECT 1 FROM actor_names an WHERE an.actor_id=cr.actor_id AND an.name LIKE :actor_pattern)')
+            cast_conditions.append('EXISTS(SELECT 1 FROM people p WHERE p.id=cr.actor_id AND p.name LIKE :actor_pattern)')
             p['actor_pattern']='%'+f['actor']+'%'
         if f.get('actor_id'):
             cast_conditions.append('cr.actor_id=:actor_id')
@@ -141,7 +147,7 @@ def query_movies(c, page_type, f):
     return dict(rows=rows,total=counts['total'],summary=counts,excluded=excluded,size=size,sql=sql)
 
 def stats(c, source):
-    counts={name:c.execute('SELECT COUNT(*) FROM '+table+(' WHERE hidden=0' if table=='films' else '')).fetchone()[0]
+    counts={name:c.execute('SELECT COUNT(*) FROM '+table).fetchone()[0]
             for name,table in [('movies','films'),('actors','people'),('roles','cast_roles'),('genres','catalog_genres')]}
     counts['gems']=c.execute(METRICS+'''SELECT COUNT(*) FROM metrics WHERE variants=1 AND vote_average>=7.4 AND vote_count BETWEEN 50 AND 4500 AND budget>0 AND budget<=35000000''',{'source':source}).fetchone()[0]
     counts['bombs']=c.execute(METRICS+'''SELECT COUNT(*) FROM metrics WHERE variants=1 AND budget>=10000000 AND revenue>0 AND revenue<budget''',{'source':source}).fetchone()[0]
@@ -151,20 +157,17 @@ def movie_detail(c, movie_id):
     row=c.execute('SELECT * FROM films WHERE id=?',(movie_id,)).fetchone()
     if not row:return None
     d=dict(row)
-    d['values']=dictionaries(c.execute('''SELECT v.*,sf.path,sf.sha256,r.row_number,ir.imported_at FROM film_values v
-        LEFT JOIN source_records r ON r.id=v.record_id LEFT JOIN source_files sf ON sf.id=r.file_id
-        LEFT JOIN import_runs ir ON ir.id=sf.run_id WHERE v.movie_id=? ORDER BY v.source,v.id''',(movie_id,)))
-    d['cast']=dictionaries(c.execute('''SELECT cr.*,p.name,EXISTS(SELECT 1 FROM cast_suppressions cs WHERE cs.movie_id=cr.movie_id AND cs.actor_id=cr.actor_id AND cs.role=cr.role AND cs.source=cr.source) suppressed FROM cast_roles cr JOIN people p ON p.id=cr.actor_id WHERE movie_id=? ORDER BY p.name,cr.role,cr.source''',(movie_id,)))
+    d['values']=dictionaries(c.execute('SELECT * FROM film_values WHERE movie_id=? ORDER BY source,id',(movie_id,)))
+    d['cast']=dictionaries(c.execute("""SELECT cr.*,p.name FROM cast_roles cr JOIN people p ON p.id=cr.actor_id
+        WHERE movie_id=? ORDER BY cr.source,cr.credit_order,p.id""",(movie_id,)))
     d['genres']=dictionaries(c.execute('SELECT g.*,gt.name FROM film_genres g JOIN catalog_genres gt ON g.genre_id=gt.id WHERE movie_id=? ORDER BY gt.name',(movie_id,)))
-    d['overrides']=dictionaries(c.execute('SELECT * FROM local_overrides WHERE movie_id=?',(movie_id,)))
-    d['history']=dictionaries(c.execute('SELECT * FROM edit_history WHERE movie_id=? ORDER BY id DESC',(movie_id,)))
     return d
 
 def difference_rows(c, f):
     fields = ['title', 'budget', 'revenue', 'vote_average', 'vote_count']
     expressions = {x: f'(COUNT(DISTINCT v.{x})>1 OR (COUNT(v.{x})>0 AND COUNT(v.{x})<COUNT(*)))' for x in fields}
     grouped = """SELECT f.id,f.title,""" + ','.join(expressions[x]+' AS '+x+'_diff' for x in fields) + """
-        FROM films f JOIN film_values v ON v.movie_id=f.id WHERE f.hidden=0 AND
+        FROM films f JOIN film_values v ON v.movie_id=f.id WHERE
         EXISTS(SELECT 1 FROM film_values q WHERE q.movie_id=f.id AND q.title LIKE :title)
         GROUP BY f.id"""
     predicate = ' OR '.join(x+'_diff' for x in (fields if not f.get('field') else [f['field']]))
@@ -180,6 +183,24 @@ def difference_rows(c, f):
         r['differing'] = [x for x in fields if r[x+'_diff']]
     return dict(rows=rows,total=summary['matches'],size=25,sql=sql,summary=summary)
 
-def audit(c,movie_id,user_id,action,details):
-    c.execute('INSERT INTO edit_history(movie_id,user_id,action,details) VALUES(?,?,?,?)',(movie_id,user_id,action,json.dumps(details)))
+
+def add_manual_entry(c, entry):
+    """Call under BEGIN IMMEDIATE so locally allocated IDs cannot collide."""
+    import json
+    mid = entry['movie_id']
+    values = entry['values']
+    if mid is None:
+        mid = min(0, c.execute('SELECT COALESCE(MIN(id),0) FROM films').fetchone()[0]) - 1
+        c.execute('INSERT INTO films(id,title) VALUES(?,?)', (mid, values['title']))
+    c.execute('''INSERT INTO film_values(movie_id,source,title,budget,revenue,vote_average,vote_count,signature)
+        VALUES(?,'manual',?,?,?,?,?,?)''', (mid, values['title'], values['budget'], values['revenue'],
+        values['vote_average'], values['vote_count'], json.dumps(values, sort_keys=True)))
+    c.executemany("INSERT INTO film_genres VALUES(?,?,'manual')", [(mid, gid) for gid in entry['genre_ids']])
+    for index, actor in enumerate(entry['cast']):
+        aid = actor['actor_id']
+        if aid is None:
+            aid = min(0, c.execute('SELECT COALESCE(MIN(id),0) FROM people').fetchone()[0]) - 1
+            c.execute('INSERT INTO people(id,name) VALUES(?,?)', (aid, actor['name']))
+        c.execute("INSERT OR IGNORE INTO cast_roles VALUES(?,?,?,'manual',?)", (mid, aid, actor['role'], index))
     bump_version(c)
+    return mid

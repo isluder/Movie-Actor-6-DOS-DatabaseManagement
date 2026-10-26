@@ -1,4 +1,4 @@
-"""Shared validation for HTML requests, saved specifications and JSON endpoints."""
+"""Shared validation for HTML requests and JSON endpoints."""
 import math
 
 class ValidationError(ValueError):
@@ -14,7 +14,7 @@ SORT_FIELDS={
 SORT_LABELS={'rating':'Rating','title':'Movie title','budget':'Production budget','revenue':'Box-office revenue',
              'votes':'Vote count','revenue_minus_budget':'Revenue minus production budget','gem_score':'Gem score',
              'shortfall':'Production-budget shortfall','roi':'Revenue minus budget (% of budget)'}
-# Accept existing bookmarked URLs and saved query specifications without a migration.
+# Accept existing bookmarked URLs without a migration.
 LEGACY_SORTS={
  'vote_average_desc':('rating','desc'),'vote_average_asc':('rating','asc'),
  'title_asc':('title','asc'),'budget_desc':('budget','desc'),'revenue_desc':('revenue','desc'),
@@ -46,7 +46,7 @@ def query(raw,page_type,c):
     for key in ('title','actor','character'):
         f[key]=str(raw.get(key,'')).strip()[:300]
     f['source']=raw.get('source','movies')
-    allowed=('both','movies','tmdb','demo','local') if page_type=='degrees' else ('movies','tmdb','demo','local')
+    allowed=('both','movies','tmdb','demo','manual') if page_type=='degrees' else ('movies','tmdb','demo','manual')
     if f['source'] not in allowed:errors['source']='Choose an available data source.'
     if page_type=='degrees' and 'source' not in raw:f['source']='both'
     f['page']=numeric(raw,'page',errors,True,1,1_000_000,1)
@@ -82,10 +82,49 @@ def query(raw,page_type,c):
     if errors:raise ValidationError(errors)
     return f
 
-def movie(raw):
-    errors={};d={'title':str(raw.get('title','')).strip()}
-    if not d['title'] or len(d['title'])>300:errors['title']='Enter a title of 1–300 characters.'
-    for key in ('budget','revenue','vote_count'):d[key]=numeric(raw,key,errors,True,default=0)
-    d['vote_average']=numeric(raw,'vote_average',errors,maximum=10,default=0)
-    if errors:raise ValidationError(errors)
-    return {key:d[key] for key in ('title','budget','revenue','vote_average','vote_count')}
+
+def manual_entry(raw, c):
+    """Validate a movie and its optional cast/genres before any writes occur."""
+    errors = {}
+    title = str(raw.get('title', '')).strip()
+    if not 1 <= len(title) <= 300:
+        errors['title'] = 'Enter a movie title of 1–300 characters.'
+    movie_id = numeric(raw, 'movie_id', errors, True, -9223372036854775807)
+    if movie_id is not None:
+        if not c.execute('SELECT 1 FROM films WHERE id=?', (movie_id,)).fetchone():
+            errors['movie_id'] = 'Choose an existing movie ID, or leave this blank to create a movie.'
+        elif c.execute("SELECT 1 FROM film_values WHERE movie_id=? AND source='manual'", (movie_id,)).fetchone():
+            errors['movie_id'] = 'This movie already has a manual entry.'
+    values = {'title': title}
+    for key in ('budget', 'revenue', 'vote_count'):
+        values[key] = numeric(raw, key, errors, True)
+    values['vote_average'] = numeric(raw, 'vote_average', errors, maximum=10)
+    genre_ids = []
+    for value in raw.getlist('genre_ids'):
+        gid = numeric({'genre': value}, 'genre', errors, True, 1)
+        if gid is None or not c.execute('SELECT 1 FROM catalog_genres WHERE id=?', (gid,)).fetchone():
+            errors['genres'] = 'Choose genres from the list.'
+        elif gid not in genre_ids:
+            genre_ids.append(gid)
+    ids, names, roles = (raw.getlist(key) for key in ('actor_id', 'actor_name', 'role'))
+    if len(ids) != len(names) or len(ids) != len(roles) or len(ids) > 100:
+        errors['cast'] = 'Use at most 100 complete cast rows.'
+    cast = []
+    for index, (aid, name, role) in enumerate(zip(ids, names, roles), 1):
+        aid, name, role = aid.strip(), name.strip(), role.strip()
+        if not (aid or name or role):
+            continue
+        key = f'cast row {index}'
+        if bool(aid) == bool(name):
+            errors[key] = 'Enter either an existing actor ID or a new actor name.'
+            continue
+        if len(name) > 300 or len(role) > 1000:
+            errors[key] = 'Use at most 300 characters for the actor name and 1,000 for the character.'
+            continue
+        actor_id = numeric({'actor': aid}, 'actor', errors, True, -9223372036854775807) if aid else None
+        if aid and (actor_id is None or not c.execute('SELECT 1 FROM people WHERE id=?', (actor_id,)).fetchone()):
+            errors[key] = 'That actor ID is absent from the catalog.'
+        cast.append(dict(actor_id=actor_id, name=name, role=role or 'Unknown role'))
+    if errors:
+        raise ValidationError(errors)
+    return dict(movie_id=movie_id, values=values, genre_ids=genre_ids, cast=cast)

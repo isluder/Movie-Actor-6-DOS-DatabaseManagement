@@ -1,10 +1,9 @@
-"""Explicit, auditable imports. No network downloads or implicit sample fallback."""
+"""Explicit, validated imports. No network downloads or implicit sample fallback."""
 import argparse
 import ast
 from collections import Counter
 from datetime import datetime, timezone
 import csv
-import hashlib
 import json
 import math
 from pathlib import Path
@@ -48,46 +47,36 @@ def identity(value):
     return n
 
 
-def raw_record(c,file_id,row_number,movie_id,row,parsed,status,reason=''):
-    return c.execute('''INSERT INTO source_records(file_id,row_number,movie_id,raw,parsed,status,reason)
-        VALUES(?,?,?,?,?,?,?)''',(file_id,row_number,movie_id,json.dumps(row,ensure_ascii=False),
-        json.dumps(parsed,ensure_ascii=False) if parsed is not None else None,status,reason)).lastrowid
-
-
-def import_source(c,source,movies_path,credits_path,run_id,max_cast,report):
+def import_source(c,source,movies_path,credits_path,max_cast,report):
     expected=set(); actual_pairs=set(); expected_roles=set(); source_counts=Counter(); variants={}
     csv.field_size_limit(16*1024*1024)
     for kind,path in [('movies',movies_path),('credits',credits_path)]:
-        with path.open('rb') as stream:
-            digest=hashlib.file_digest(stream,'sha256').hexdigest()
-        file_id=c.execute('INSERT INTO source_files(source,kind,path,sha256,run_id) VALUES(?,?,?,?,?)',
-                          (source,kind,str(path.resolve()),digest,run_id)).lastrowid
         with path.open(encoding='utf-8-sig',newline='') as stream:
             reader=csv.DictReader(stream)
             required={'id','title','budget','revenue','vote_average','vote_count','genres'} if kind=='movies' else {'cast', 'movie_id' if source=='tmdb' else 'id'}
             if not required.issubset(reader.fieldnames or []):raise ValueError(f'{path}: missing headers {sorted(required-set(reader.fieldnames or []))}')
-            for row_number,row in enumerate(reader,2):
+            for row in reader:
                 source_counts[kind+'_rows']+=1
                 try:
                     mid=identity(row.get('id') if kind=='movies' or source!='tmdb' else row.get('movie_id'))
-                except ValueError as e:
-                    raw_record(c,file_id,row_number,None,row,None,'rejected',str(e)); source_counts[kind+'_rejected']+=1;continue
+                except ValueError:
+                    source_counts[kind+'_rejected']+=1;continue
                 if kind=='movies':
                     title=(row.get('title') or row.get('original_title') or '').strip()
                     if not title:
-                        raw_record(c,file_id,row_number,mid,row,None,'rejected','Missing title');source_counts['movies_rejected']+=1;continue
+                        source_counts['movies_rejected']+=1;continue
                     values={'title':title,'budget':number(row.get('budget'),True),'revenue':number(row.get('revenue'),True),
                             'vote_average':number(row.get('vote_average'),maximum=10),'vote_count':number(row.get('vote_count'),True)}
                     warnings=[key+' missing or invalid' for key,val in values.items() if val is None]
                     try:genres=parse_json_or_literal(row.get('genres',''))
                     except (ValueError,SyntaxError,TypeError):genres=[];warnings.append('Invalid genres')
-                    rid=raw_record(c,file_id,row_number,mid,row,values,'warning' if warnings else 'valid','; '.join(warnings))
+                    source_counts['warning_rows']+=bool(warnings)
                     signature=json.dumps(values,sort_keys=True,ensure_ascii=False)
                     expected.add(mid);source_counts['movies_valid_rows']+=1
                     variants.setdefault(mid,set()).add(signature)
                     c.execute('INSERT OR IGNORE INTO films(id,title) VALUES(?,?)',(mid,title))
-                    c.execute('''INSERT OR IGNORE INTO film_values(movie_id,source,title,budget,revenue,vote_average,vote_count,signature,record_id)
-                        VALUES(?,?,?,?,?,?,?,?,?)''',(mid,source,*values.values(),signature,rid))
+                    c.execute('''INSERT OR IGNORE INTO film_values(movie_id,source,title,budget,revenue,vote_average,vote_count,signature)
+                        VALUES(?,?,?,?,?,?,?,?)''',(mid,source,*values.values(),signature))
                     for g in genres:
                         try:gid=identity(g.get('id'));name=str(g.get('name') or '').strip();assert name
                         except (ValueError,AssertionError):continue
@@ -95,23 +84,22 @@ def import_source(c,source,movies_path,credits_path,run_id,max_cast,report):
                         c.execute('INSERT OR IGNORE INTO film_genres VALUES(?,?,?)',(mid,gid,source))
                 else:
                     if mid not in expected:
-                        raw_record(c,file_id,row_number,mid,row,None,'rejected','Movie absent from valid metadata');source_counts['credits_rejected']+=1;continue
+                        source_counts['credits_rejected']+=1;continue
                     try:cast=parse_json_or_literal(row.get('cast',''))
-                    except (ValueError,SyntaxError,TypeError) as e:
-                        raw_record(c,file_id,row_number,mid,row,None,'rejected','Invalid cast: '+str(e));source_counts['credits_rejected']+=1;continue
-                    warnings=[];parsed=[]
+                    except (ValueError,SyntaxError,TypeError):
+                        source_counts['credits_rejected']+=1;continue
+                    warnings=[]
                     if not cast:source_counts['empty_cast_rows']+=1
                     for index,a in enumerate(cast):
                         try:aid=identity(a.get('id'));name=str(a.get('name') or '').strip();assert name
                         except (ValueError,AssertionError):warnings.append(f'Invalid actor at index {index}');continue
                         role=str(a.get('character') or 'Unknown role').strip() or 'Unknown role'
-                        expected_roles.add((mid,aid,role));parsed.append({'actor_id':aid,'name':name,'role':role})
+                        expected_roles.add((mid,aid,role))
                         if max_cast is not None and index>=max_cast:continue
                         c.execute('INSERT OR IGNORE INTO people VALUES(?,?)',(aid,name))
-                        c.execute('INSERT OR IGNORE INTO actor_names VALUES(?,?,?)',(aid,source,name))
-                        c.execute('INSERT OR IGNORE INTO cast_roles VALUES(?,?,?,?)',(mid,aid,role,source))
+                        c.execute('INSERT OR IGNORE INTO cast_roles VALUES(?,?,?,?,?)',(mid,aid,role,source,index))
                         actual_pairs.add((mid,aid))
-                    raw_record(c,file_id,row_number,mid,row,parsed,'warning' if warnings else 'valid','; '.join(warnings))
+                    source_counts['warning_rows']+=bool(warnings)
     actual={r[0] for r in c.execute('SELECT DISTINCT movie_id FROM film_values WHERE source=?',(source,))}
     if actual!=expected:raise ValueError('Movie ID coverage mismatch: '+source)
     imported_roles={tuple(r) for r in c.execute('SELECT movie_id,actor_id,role FROM cast_roles WHERE source=?',(source,))}
@@ -139,7 +127,6 @@ def stage_catalog(path, selection='both', data_dir=DATA_DIR, max_cast=None):
     run_id=uuid.uuid4().hex
     report={'version':run_id,'selection':selection,'cast_complete':max_cast is None,'cast_cap':max_cast,'sources':{}}
     with db.connection(path) as c:
-        c.execute('INSERT INTO import_runs VALUES(?,?,?,?)',(run_id,datetime.now(timezone.utc).isoformat(),selection,'{}'))
         sets=[]
         if selection=='demo':
             fixture=json.loads((db.BASE_DIR/'sample_data.json').read_text())
@@ -152,11 +139,11 @@ def stage_catalog(path, selection='both', data_dir=DATA_DIR, max_cast=None):
                     for mid,title,budget,revenue,rating,votes,gids,cast in fixture['sample_movies']:
                         mw.writerow(dict(id=mid,title=title,budget=budget,revenue=revenue,vote_average=rating,vote_count=votes,genres=json.dumps([dict(id=g,name=genres[g]) for g in gids])))
                         cw.writerow(dict(id=mid,cast=json.dumps([dict(id=a,name=n,character=r) for a,n,r in cast])))
-                sets.append(import_source(c,'demo',mp,cp,run_id,max_cast,report))
+                sets.append(import_source(c,'demo',mp,cp,max_cast,report))
         else:
             for source in selected:
                 print(f'Importing {source} metadata and complete credits…',flush=True)
-                sets.append(import_source(c,source,*paths[source],run_id,max_cast,report))
+                sets.append(import_source(c,source,*paths[source],max_cast,report))
         expected=set.union(*sets)
         actual={r[0] for r in c.execute('SELECT id FROM films')}
         if actual!=expected:raise ValueError('Combined catalog ID coverage failed')
@@ -167,30 +154,35 @@ def stage_catalog(path, selection='both', data_dir=DATA_DIR, max_cast=None):
         report['cast_pairs']=c.execute('SELECT COUNT(*) FROM (SELECT DISTINCT movie_id,actor_id FROM cast_roles)').fetchone()[0]
         report['roles']=c.execute('SELECT COUNT(*) FROM cast_roles').fetchone()[0]
         report['genre_links']=c.execute('SELECT COUNT(*) FROM film_genres').fetchone()[0]
-        c.execute('UPDATE import_runs SET report=? WHERE id=?',(json.dumps(report),run_id))
-        c.executemany('INSERT INTO catalog_meta VALUES(?,?)',[('version',run_id),('report',json.dumps(report)),('schema_version','2')])
+        c.executemany('INSERT INTO catalog_meta VALUES(?,?)',[('version',run_id),('report',json.dumps(report)),('schema_version',db.SCHEMA_VERSION)])
     with db.connection(path) as c:
         if c.execute('PRAGMA integrity_check').fetchone()[0]!='ok':raise ValueError('Integrity check failed')
     return report
 
 
 def activate(stage, target):
-    """Acquire SQLite's writer lock before backup; replace catalog in one transaction."""
+    """Back up the old database and replace its schema/data in one transaction."""
     target=Path(target);target.parent.mkdir(parents=True,exist_ok=True)
-    db.init_db(target)
     backup_dir=target.parent/'backups';backup_dir.mkdir(exist_ok=True)
     backup=backup_dir/(target.stem+'-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')+'.db')
+    # Child tables come first so old schemas with foreign keys can also migrate.
+    obsolete = ['saved_queries','login_attempts','users','cast_suppressions','edit_history',
+                'local_overrides','film_genres','cast_roles','actor_names','film_values',
+                'source_records','source_files','catalog_genres','people','films',
+                'import_runs','catalog_meta','Movie_Cast','Genres','Genre_Types','Actors','Movies']
     with db.connection(target) as c:
         c.execute('ATTACH DATABASE ? AS staged',(str(stage),))
         c.execute('BEGIN IMMEDIATE')
-        # A second connection snapshots committed state while this connection owns the writer lock.
         with db.connection(target) as origin,db.connection(backup) as destination:
             origin.backup(destination)
-        for table in db.CATALOG_TABLES:c.execute('DELETE FROM main.'+table)
-        for table in reversed(db.CATALOG_TABLES):c.execute('INSERT INTO main.'+table+' SELECT * FROM staged.'+table)
-        # Remove obsolete v1 catalog tables only after their complete backup exists.
-        for table in ('Movie_Cast','Genres','Genre_Types','Actors','Movies'):
-            c.execute('DROP TABLE IF EXISTS main.'+table)
+        c.execute('DROP VIEW IF EXISTS main.source_metrics')
+        for table in obsolete:c.execute('DROP TABLE IF EXISTS main.'+table)
+        # executescript commits implicitly: execute statements separately to keep
+        # both the schema migration and all inserts inside the rollback boundary.
+        for statement in (db.BASE_DIR/'schema.sql').read_text().split(';'):
+            if statement.strip():c.execute(statement)
+        for table in reversed(db.CATALOG_TABLES):
+            c.execute('INSERT INTO main.'+table+' SELECT * FROM staged.'+table)
         if c.execute('PRAGMA main.foreign_key_check').fetchone():raise ValueError('Activated catalog failed foreign key validation')
     return str(backup)
 
@@ -209,8 +201,8 @@ if __name__=='__main__':
     parser.add_argument('--data-dir',type=Path,default=DATA_DIR)
     parser.add_argument('--db',default=db.DB_PATH)
     parser.add_argument('--max-cast',type=int)
-    parser.add_argument('--confirm',action='store_true',help='Confirm local catalog edits will be reset')
+    parser.add_argument('--confirm',action='store_true',help='Confirm the catalog will be backed up and replaced')
     args=parser.parse_args()
-    if args.command=='rebuild' and not args.confirm:parser.error('Rebuild resets local catalog changes; supply --confirm')
+    if args.command=='rebuild' and not args.confirm:parser.error('Rebuild replaces the catalog; supply --confirm')
     try:print(json.dumps(run_ingestion(args.data_dir,args.dataset,args.max_cast,args.db,args.command=='validate'),indent=2))
     except (ValueError,OSError) as e:parser.exit(1,str(e)+'\n')
