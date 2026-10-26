@@ -15,7 +15,7 @@ const edge=(mid,aid,onPath=false)=>({data:{id:`cast:${mid}:${aid}`,source:`actor
 const base={status:'found',source:'both',catalog_version:'version1',degrees:1,depth:0,
   nodes:[actor(1,true),movie(10,true),actor(2,true)],edges:[edge(10,1,true),edge(10,2,true)],
   path:[{id:'actor:1',kind:'actor',label:'Actor 1',entity_id:1},{id:'movie:10',kind:'movie',label:'Movie 10',entity_id:10},{id:'actor:2',kind:'actor',label:'Actor 2',entity_id:2}]};
-const elements = Object.fromEntries(['graph-data','depth','degrees-form','graph-status','text-path','graph-details','graph-reset','graph-path-only','depth-value','graph'].map(key=>[key,new Element()]));
+const elements = Object.fromEntries(['graph-data','depth','degrees-form','graph-status','text-path','graph-details','graph-reset','graph-path-only','graph-explore-builder','depth-value','graph'].map(key=>[key,new Element()]));
 elements['graph-data'].textContent=JSON.stringify(base);elements.depth.value='0';
 elements['degrees-form'].elements={start:{value:'1'},end:{value:'2'},source:{value:'both'}};
 let cy, calls=[], nextResponse, resolvePending;
@@ -42,6 +42,13 @@ const response=data=>({ok:true,json:async()=>data});
   // Expand a movie to its cast through the same interaction.
   nextResponse=async()=>response({catalog_version:'version1',nodes:[movie(11),actor(3)],edges:[edge(11,3)],next_offset:1,total:1,has_more:false});
   cy.$id('movie:11').emit('dbltap');await flush();assert.equal(cy.nodes().length,6);
+  cy.$id('actor:3').select();
+  elements['graph-explore-builder'].events.click({preventDefault(){throw new Error('Should open a populated graph');}});
+  const handoff=new URL(elements['graph-explore-builder'].href,'http://local');
+  const seed=new URLSearchParams(handoff.hash.slice(1));
+  assert.equal(handoff.pathname,'/knowledge-graph');assert.equal(seed.get('source'),'both');
+  assert.equal(seed.get('catalog_version'),'version1');assert.equal(seed.get('focus'),'actor:3');
+  assert.deepEqual(new Set(seed.getAll('node')),new Set(cy.nodes().map(n=>n.id())));
   // A pending expansion must not append nodes to a newly reset path.
   nextResponse=()=>new Promise(resolve=>{resolvePending=resolve;});
   cy.$id('actor:2').emit('dbltap');await flush();

@@ -85,7 +85,10 @@ studio profit. Sorting and summary statistics cover all matches before paginatio
 Six Degrees finds shortest paths within six shared-film steps using the complete
 selected cast network. Voice roles count; shared credits do not establish personal
 contact. Rendering caps of 300 nodes and 1,000 edges do not limit path search.
-Double-click graph nodes to expand neighbors in batches of 15. Source labels and
+Double-click graph nodes to expand neighbors in batches of 15. The “Explore in
+Knowledge Graph Builder” control opens the current visible graph (including
+expansions), source selection, and selected node in a new tab. It is hidden when
+the builder is disabled. Source labels and
 all roles remain available on edges. Depth controls, textual paths, actor suggestions,
 and actor distance statistics remain supported.
 
@@ -141,26 +144,54 @@ The compressed index sits beside the database as `*.db.similarity.json.gz` and
 is excluded from Git. It publishes atomically. Rebuild it after a catalog rebuild
 or Manual Entry: the page refuses an index from an older catalog version.
 
-Build your own knowledge graph is a separate browser workspace using the bundled
-Cytoscape renderer. Add typed nodes and labeled, directed relationships, drag nodes,
-rename or delete selections, fit the graph, or load an example. A text list makes
-items selectable without interacting with the canvas. Undo/redo restores the last
-change, including a replaced or cleared graph. Browser storage autosaves the graph;
-JSON export/import lets you keep a portable copy. Imports validate before replacing
-the canvas (200 nodes, 500 relationships, maximum 1 MB). This workspace does not
-modify catalog data and does not synchronize between browsers.
+Build your own knowledge graph is a read-only visual explorer of the database.
+Search Movie, Actor, or Genre labels. Movie term searches include source titles,
+cast names, character roles, and genre names. The search and role text fields
+suggest matching catalog values after two characters, with a short typing delay.
+Suggestions respect the current source and filters; you can also enter your own
+terms. Add individual results or a page of
+20 records; relationships between visible records connect automatically.
+Double-click a movie to expand its cast/genres, an actor to expand their movies,
+or a genre to expand its movies. Each expansion adds up to 20 unseen neighbors.
+
+Choose cast-credit edges, movie–genre edges, or both, and optionally match character
+or role text on cast edges. A source selector supports one dataset or Combined sources for relationships.
+Financial filters require a single dataset, keeping numerical values separate. Genre, budget, and revenue filters constrain searches
+and expansion; applying filters also removes disqualified movies from the canvas.
+Unknown/zero financial values and ambiguous same-source variants do not pass
+financial filters. Selecting a movie still shows all its source-specific values.
+Changing the source clears the canvas to start a consistent new exploration.
+
+Drag nodes, arrange or fit the graph, adjust node/edge text size, inspect source
+and role details, remove items from the canvas, or export displayed records and
+positions as JSON. A text list and Expand button provide an alternative to canvas
+interaction. The display holds up to 300 nodes and 1,000 edges. Catalog version
+checks reject expansion after a catalog change. No catalog tables are modified;
+the free-form editor and fabricated relationships have been replaced by catalog
+records and actual relationships. The canvas is session-only; export keeps a copy.
 
 ## Configuration
 
-`config.yaml` controls Movie Search, Hidden Gems, Bombed at the Box Office, Source
-Differences, Six Degrees, Interactive Graph, Dashboard Statistics, and SQL Previews.
-SQL Search, Manual Entry, Similar Movies, and Build your own knowledge graph
-also have independent switches. Set Enable/Disable
-and restart. Unknown names, duplicate
-keys, invalid values, and missing configuration files stop startup with an error.
-Omitted known switches default to enabled. Disabling Interactive Graph retains a
-textual six-degrees path; disabling Six Degrees disables the interactive graph too.
-Set `MOVIE_CONFIG_FILE` to select another configuration file.
+Every application page has a switch under `application_features` in `config.yaml`:
+Home Page, Movie Search, Movie Details, Hidden Gems, Bombed at the Box Office,
+Source Differences, Six Degrees, SQL Search, Manual Entry, Similar Movies,
+Build your own knowledge graph, and Setup Page. Interactive Graph, Dashboard
+Statistics, and SQL Previews control components within those pages.
+
+Set `Enable` or `Disable`, then restart Flask. Disabled pages and their associated
+APIs return 404, and their links are removed or marked disabled. If Home Page is
+disabled, `/` redirects to the first enabled landing page, including utilities.
+If no landing pages are enabled, `/` returns 404. Disabling Movie Details retains
+movie labels and source values in searches/graphs without links to the detail page;
+Manual Entry still saves and returns to its form. With Setup Page disabled, an
+unavailable catalog shows a generic 503 message instead of setup instructions.
+
+Unknown names, duplicate keys, invalid values, and missing configuration files stop
+startup with an error. Omitted known switches default to enabled. Disabling
+Interactive Graph retains a textual six-degrees path; disabling Six Degrees disables
+the interactive graph too. The separate knowledge graph explorer has its own switch.
+Actor suggestions are shared by Movie Search and Six Degrees and are disabled when
+both are disabled. Set `MOVIE_CONFIG_FILE` to select another configuration file.
 
 ## Validate, rebuild, and recover
 
@@ -199,5 +230,6 @@ Python tests cover imports, source differences, source-coherent analytics, sorti
 pagination, graph traversal/expansion, feature switches, removed routes, SQL
 constraints, legacy-schema migration, backup contents, and transactional rollback.
 JavaScript tests exercise graph events, dashboard customization, and actor distance
-controls, and knowledge graph validation/editing/imports headlessly. Similarity
+controls, and catalog graph search, expansion, filters, text sizing, source details, and
+stale responses headlessly. Similarity
 tests cover source deduplication, ranking, sample benchmarking, and stale indexes.

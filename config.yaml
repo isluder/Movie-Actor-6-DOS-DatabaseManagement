@@ -1,9 +1,12 @@
 # Change Enable to Disable, then restart the app.
 application_features:
+  Home Page: Enable
+  Movie Details: Enable
+  Setup Page: Enable
   Movie Search: Enable
   Hidden Gems: Enable
   Bombed at the Box Office: Enable
-  Source Differences: Disable
+  Source Differences: Enable
   Six Degrees: Enable
   Interactive Graph: Enable
   Dashboard Statistics: Enable

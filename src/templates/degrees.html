@@ -20,12 +20,12 @@
 <div id="distance-chart"></div><div id="farthest-connection" class="farthest-connection"></div><p class="hint">One shared movie = one degree. Counts cover all reachable other actors, beyond the six-degree path-search limit. Actors not connected are counted separately. The starting actor is excluded. These are connections in the imported catalog.</p></section>
 {% if features.interactive_graph %}
 <p id="graph-status" role="status"></p><ol id="text-path" class="text-path"></ol>
-<div class="graph-toolbar"><button class="btn btn-secondary" id="graph-reset" type="button">Fit graph</button><button class="btn btn-secondary" id="graph-path-only" type="button">Path only</button><span>Circles: actors · Diamonds: movies · Gold: shortest path · Double-click to expand</span></div>
+<div class="graph-toolbar"><button class="btn btn-secondary" id="graph-reset" type="button">Fit graph</button><button class="btn btn-secondary" id="graph-path-only" type="button">Path only</button>{% if features.knowledge_graph %}<a class="btn btn-secondary" id="graph-explore-builder" href="{{ url_for('knowledge_graph') }}" target="_blank" rel="noopener">Explore in Knowledge Graph Builder ↗</a>{% endif %}<span>Circles: actors · Diamonds: movies · Gold: shortest path · Double-click to expand</span></div>
 <div class="graph-layout"><div id="graph" role="img" aria-label="Actor and movie connection graph"></div><aside class="panel" id="graph-details"><h2>Details</h2><p>Hover for details. Click to pin; double-click a node to expand it.</p></aside></div>
 <script id="graph-data" type="application/json">{{ graph_result|tojson }}</script><script defer src="{{ url_for('static',filename='vendor/cytoscape-3.33.0.min.js') }}"></script><script defer src="{{ url_for('static',filename='graph.js') }}"></script>
 {% elif graph_result %}
 <p role="status">{% if graph_result.status=='found' %}Shortest path: {{ graph_result.degrees }} degrees.{% elif graph_result.status=='same_actor' %}The same actor is selected: zero degrees.{% elif graph_result.status=='no_path' %}No connection found within six degrees in the selected imported network.{% else %}Search interrupted by its time limit. This does not establish that no connection exists.{% endif %}{% if graph_result.cast_complete==false %} This catalog was imported with incomplete cast coverage.{% endif %}</p>
-<ol class="text-path">{% for item in graph_result.path %}<li>{% if item.kind=='movie' %}<a href="{{ url_for('movie_detail',movie_id=item.entity_id) }}">{{ item.label }}</a>{% else %}{{ item.label }}{% endif %}</li>{% endfor %}</ol>
+<ol class="text-path">{% for item in graph_result.path %}<li>{% if item.kind=='movie' %}{{ m.movie_link(item.entity_id,item.label,'') }}{% else %}{{ item.label }}{% endif %}</li>{% endfor %}</ol>
 {% endif %}
 <script defer src="{{ url_for('static',filename='distances.js') }}"></script>
 {% endblock %}

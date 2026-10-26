@@ -6,6 +6,9 @@ import yaml
 
 DEFAULT_CONFIG = Path(__file__).resolve().parent.parent / 'config.yaml'
 LABELS = {
+    'home': 'Home Page',
+    'movie_details': 'Movie Details',
+    'setup': 'Setup Page',
     'movie_search': 'Movie Search',
     'hidden_gems': 'Hidden Gems',
     'box_office': 'Bombed at the Box Office',
@@ -23,7 +26,10 @@ PAGE_FEATURES = {'index': 'movie_search', 'gems': 'hidden_gems', 'bombs': 'box_o
                  'differences': 'source_differences', 'degrees': 'six_degrees', 'similar_movies': 'similar_movies'}
 ENDPOINT_FEATURES = {
     **PAGE_FEATURES,
+    'home':'home', 'movie_detail':'movie_details', 'setup':'setup',
     'knowledge_graph': 'knowledge_graph',
+    'knowledge_graph_search':'knowledge_graph', 'knowledge_graph_view':'knowledge_graph',
+    'knowledge_graph_suggestions':'knowledge_graph',
     'sql_search': 'sql_search', 'manual_entry': 'manual_entry',
     'connections_api': 'six_degrees',
     'expand_node_api': 'interactive_graph', 'actor_statistics_api': 'six_degrees',

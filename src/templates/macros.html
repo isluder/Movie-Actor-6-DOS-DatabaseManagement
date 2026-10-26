@@ -1,3 +1,4 @@
+{% macro movie_link(id,label,class='') %}{% if features.movie_details %}<a class="{{ class }}" href="{{ url_for('movie_detail',movie_id=id) }}">{{ label }}</a>{% else %}<span class="{{ class }}">{{ label }}</span>{% endif %}{% endmacro %}
 {% macro input(name,label,values,type='text',placeholder='') %}<div class="form-group"><label for="{{ name }}">{{ label }}</label><input id="{{ name }}" name="{{ name }}" type="{{ type }}" value="{{ values.get(name,'') if values.get(name) is not none else '' }}" placeholder="{{ placeholder }}" {% if type=='number' %}step="any"{% endif %}></div>{% endmacro %}
 {% macro errors(items) %}{% if items %}<div class="alert alert-error" role="alert"><ul>{% for field,message in items.items() %}<li><strong>{{ field|replace('_',' ') }}:</strong> {{ message }}</li>{% endfor %}</ul></div>{% endif %}{% endmacro %}
 {% macro sorting(page_type,values) %}

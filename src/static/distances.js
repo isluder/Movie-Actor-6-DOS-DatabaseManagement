@@ -53,8 +53,8 @@
       const list=document.createElement('ol');list.className='text-path';
       for (const item of route) {
         const li=document.createElement('li');
-        const link=document.createElement('a');
-        link.href=item.kind==='movie' ? `/movie/${item.entity_id}` : '/six-degrees?'+new URLSearchParams({start:item.entity_id,source:data.source});
+        const link=document.createElement(item.kind==='movie' && document.body?.dataset.movieDetails==='disabled' ? 'span' : 'a');
+        if(item.kind!=='movie'||document.body?.dataset.movieDetails!=='disabled')link.href=item.kind==='movie' ? `/movie/${item.entity_id}` : '/six-degrees?'+new URLSearchParams({start:item.entity_id,source:data.source});
         link.textContent=item.label;li.append(link);list.append(li);
       }
       farthest.append(heading,explanation,list);

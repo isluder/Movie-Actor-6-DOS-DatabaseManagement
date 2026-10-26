@@ -89,7 +89,7 @@
     path.replaceChildren();
     for (const item of data.path) {
       const li = document.createElement('li');
-      if (item.kind === 'movie') {const a=document.createElement('a');a.href=`/movie/${item.entity_id}`;a.textContent=item.label;li.append(a);}
+      if (item.kind === 'movie' && document.body?.dataset.movieDetails !== 'disabled') {const a=document.createElement('a');a.href=`/movie/${item.entity_id}`;a.textContent=item.label;li.append(a);}
       else li.textContent=item.label;
       path.append(li);
     }
@@ -114,6 +114,16 @@
     const saveSpec=document.querySelector('input[name=spec]');
     if(saveSpec){const spec=JSON.parse(saveSpec.value);spec.depth=Number(slider.value);spec.start=Number(form.elements.start.value);spec.end=Number(form.elements.end.value);spec.source=form.elements.source.value;saveSpec.value=JSON.stringify(spec);}
   }
+
+  const builderLink=document.getElementById('graph-explore-builder');
+  builderLink?.addEventListener('click',event=>{
+    if(!cy||!activeData||!cy.nodes().length){event.preventDefault();status.textContent='Find a connection before opening the builder.';return;}
+    const params=new URLSearchParams({source:activeData.source,catalog_version:activeData.catalog_version});
+    cy.nodes().forEach(node=>params.append('node',node.id()));
+    const selected=cy.nodes(':selected').first();
+    if(selected.nonempty())params.set('focus',selected.id());
+    builderLink.href='/knowledge-graph#'+params;
+  });
 
   document.getElementById('graph-reset').addEventListener('click',()=>cy?.fit(undefined,30));
   document.getElementById('graph-path-only').addEventListener('click',()=>{

@@ -98,6 +98,182 @@ class AppTest(unittest.TestCase):
         self.assertIn(b'No cast or role records are available',empty.data)
         self.assertNotIn(b'<th>Actor</th>',empty.data)
 
+    def test_catalog_graph_search_expansion_and_read_only(self):
+        base='/api/knowledge-graph/'
+        with db.connection(self.path) as c:before='\n'.join(c.iterdump())
+        found=self.client.get(base+'search?kind=movie&q=Same+Name').json
+        self.assertEqual({r['id'] for r in found['results']},{'movie:1','movie:2'})
+        actors=self.client.get(base+'search?kind=actor&q=Same+Name&min_revenue=1000000').json
+        self.assertEqual({r['id'] for r in actors['results']},{'actor:10','actor:11'})
+        genres=self.client.get(base+'search?kind=genre&q=Drama').json
+        self.assertEqual(genres['results'][0]['id'],'genre:18')
+        data=self.client.get(base+'view?node=movie:1&expand=movie:1').json
+        self.assertEqual({n['data']['id'] for n in data['nodes']},{'movie:1','actor:10','actor:11','genre:18'})
+        self.assertEqual({e['data']['kind'] for e in data['edges']},{'cast','genre'})
+        credit=next(e['data'] for e in data['edges'] if e['data']['id']=='cast:1:10')
+        self.assertEqual({r['role'] for r in credit['details']},{'Hero','Narrator'})
+        self.assertEqual({r['source'] for r in credit['details']},{'movies'})
+        cast=self.client.get(base+'view?node=movie:1&expand=movie:1&edge=cast&role=Hero').json
+        self.assertEqual({n['data']['id'] for n in cast['nodes']},{'movie:1','actor:10'})
+        expanded=self.client.get(base+'view?node=actor:11&expand=actor:11&min_revenue=4000000').json
+        self.assertEqual({n['data']['id'] for n in expanded['nodes']},{'actor:11','movie:1'})
+        # Movie 2 has conflicting source variants, so it cannot qualify for a financial filter.
+        ambiguous=self.client.get(base+'search?kind=movie&min_revenue=1').json
+        self.assertNotIn('movie:2',{r['id'] for r in ambiguous['results']})
+        genre=self.client.get(base+'view?node=genre:18&expand=genre:18&edge=genre').json
+        self.assertEqual({n['data']['id'] for n in genre['nodes']},{'movie:1','genre:18'})
+        changed=self.client.get(base+'view?node=movie:1&node=actor:10&min_budget=20000000').json
+        self.assertNotIn('movie:1',{n['data']['id'] for n in changed['nodes']})
+        with db.connection(self.path) as c:self.assertEqual(before,'\n'.join(c.iterdump()))
+        self.assertEqual(self.client.post(base+'view').status_code,405)
+
+    def test_catalog_graph_validation_and_limits(self):
+        base='/api/knowledge-graph/'
+        for args in ['kind=sql','source=bad','min_budget=-1','min_revenue=NaN','min_budget=9&max_budget=1','edge=unknown','genre_id=999','offset=-1']:
+            self.assertEqual(self.client.get(base+'search?'+args).status_code,400,args)
+        for args in ['node=films:1','node=movie:9999999999999999999999','expand=actor:999','node=movie:1;DROP']:
+            self.assertEqual(self.client.get(base+'view?'+args).status_code,400,args)
+        self.assertEqual(self.client.get(base+'view?catalog_version=old').status_code,409)
+        self.assertEqual(self.client.get(base+'view',query_string=[('node','actor:10')]*301).status_code,400)
+        disabled=self.feature_app({'knowledge_graph':False}).test_client()
+        for path in ['search','view']:self.assertEqual(disabled.get(base+path).status_code,404)
+        # Independent of Six Degrees and its visualization switch.
+        enabled=self.feature_app({'six_degrees':False,'interactive_graph':False}).test_client()
+        self.assertEqual(enabled.get(base+'view?expand=movie:1').status_code,200)
+        with db.connection(self.path) as c:
+            c.executemany('INSERT INTO people VALUES(?,?)',[(100+i,'Extra') for i in range(25)])
+            c.executemany("INSERT INTO cast_roles VALUES(1,?,'Extra','movies',0)",[(100+i,) for i in range(25)])
+        first=self.client.get(base+'view?node=movie:1&expand=movie:1&edge=cast').json
+        self.assertEqual(len(first['nodes']),21)
+        self.assertTrue(first['has_more'])
+        query=[('node',n['data']['id']) for n in first['nodes']]+[('expand','movie:1'),('edge','cast')]
+        second=self.client.get(base+'view',query_string=query).json
+        self.assertEqual(len(second['nodes']),28)
+        self.assertFalse(second['has_more'])
+
+    def test_direct_script_startup_catalog_graph(self):
+        import subprocess
+        import sys
+        script = """
+import os, runpy, sys
+from flask import Flask
+from unittest.mock import patch
+os.environ['MOVIE_CONFIG_FILE']=sys.argv[3]
+sys.path.insert(0,str(__import__('pathlib').Path(sys.argv[1]).parent))
+def check(app, *args, **kwargs):
+    app.config.update(TESTING=True,DATABASE=sys.argv[2])
+    client=app.test_client()
+    for url in ['/api/knowledge-graph/search?kind=genre&q=Drama',
+                '/api/knowledge-graph/suggestions?kind=actor&q=Same',
+                '/api/knowledge-graph/view?node=movie:1&expand=movie:1']:
+        response=client.get(url)
+        assert response.status_code==200, (url,response.status_code)
+        assert response.is_json
+with patch.object(Flask,'run',check):
+    runpy.run_path(sys.argv[1],run_name='__main__')
+"""
+        result=subprocess.run([sys.executable,'-c',script,str(Path('src/app.py').resolve()),str(self.path),str(self.feature_config)],capture_output=True,text=True,timeout=15)
+        self.assertEqual(result.returncode,0,result.stderr)
+
+    def test_catalog_graph_suggestions(self):
+        base='/api/knowledge-graph/suggestions'
+        with db.connection(self.path) as c:before='\n'.join(c.iterdump())
+        suggestions=self.client.get(base+'?kind=movie&q=Same').json['suggestions']
+        self.assertIn({'kind':'actor','value':'Same Name'},suggestions)
+        self.assertIn({'kind':'genre','value':'Drama'},self.client.get(base+'?kind=movie&q=Dra').json['suggestions'])
+        self.assertIn({'kind':'movie','value':"Apostrophe's Movie"},self.client.get(base+'?kind=movie&q=Apo').json['suggestions'])
+        self.assertIn({'kind':'role','value':'Hero'},self.client.get(base+'?field=role&role=He').json['suggestions'])
+        self.assertEqual(self.client.get(base+'?kind=actor&q=Third&min_revenue=1').json['suggestions'],[])
+        self.assertIn({'kind':'actor','value':'Third Actor'},self.client.get(base+'?kind=actor&q=Third&source=tmdb&min_revenue=1').json['suggestions'])
+        self.assertEqual(self.client.get(base+'?q=A').json['suggestions'],[])
+        self.assertEqual(self.client.get(base+'?field=unknown').status_code,400)
+        self.assertEqual(self.feature_app({'knowledge_graph':False}).test_client().get(base+'?q=Same').status_code,404)
+        with db.connection(self.path) as c:self.assertEqual(before,'\n'.join(c.iterdump()))
+
+    def test_all_pages_and_related_apis_can_be_disabled_in_yaml(self):
+        routes={
+            'home':['/'], 'movie_details':['/movie/1'], 'setup':['/setup'],
+            'movie_search':['/movie-search'], 'hidden_gems':['/hidden-gems'],
+            'box_office':['/bombs'], 'source_differences':['/source-differences'],
+            'six_degrees':['/six-degrees','/api/connections','/api/actor-statistics'],
+            'interactive_graph':['/api/neighborhood','/api/expand-node'],
+            'similar_movies':['/similar-movies'], 'sql_search':['/sql-search'],
+            'manual_entry':['/manual-entry'], 'knowledge_graph':['/knowledge-graph',
+                '/api/knowledge-graph/search','/api/knowledge-graph/view','/api/knowledge-graph/suggestions'],
+        }
+        config=Path(self.temp_case.name)/'all-page-switches.yaml'
+        for key,paths in routes.items():
+            config.write_text('application_features:\n  '+features.LABELS[key]+': Disable\n')
+            client=self.feature_app(config_file=config).test_client()
+            for path in paths:
+                with self.subTest(feature=key,path=path):
+                    response=client.get(path)
+                    if path=='/':
+                        self.assertEqual(response.location,'/movie-search')
+                        self.assertEqual(client.get(response.location).status_code,200)
+                    else:self.assertEqual(response.status_code,404)
+                    if path.startswith('/api/'):self.assertTrue(response.is_json)
+            if key in ('manual_entry','sql_search'):
+                self.assertEqual(client.post(paths[0]).status_code,404)
+            landing=client.get('/',follow_redirects=True)
+            for path in paths:
+                if path not in ('/',) and not path.startswith('/api/'):
+                    self.assertNotIn(('href="'+path+'"').encode(),landing.data)
+        # Every application endpoint must have a switch or an explicit shared policy.
+        covered=set(features.ENDPOINT_FEATURES)|{'static','actors_api'}
+        self.assertTrue({rule.endpoint for rule in self.app.url_map.iter_rules()}<=covered)
+        config.write_text('application_features:\n'+''.join('  '+label+': Disable\n' for label in features.LABELS.values()))
+        off=self.feature_app(config_file=config).test_client()
+        for path in [path for paths in routes.values() for path in paths]+['/api/actors']:
+            self.assertEqual(off.get(path).status_code,404,path)
+        with off.get('/static/style.css') as response:self.assertEqual(response.status_code,200)
+        # A utility page can be the only enabled destination, without redirect loops.
+        for key,path in [('knowledge_graph','/knowledge-graph'),('sql_search','/sql-search'),('manual_entry','/manual-entry')]:
+            flags={key:False for key in features.LABELS};flags[key]=True
+            client=self.feature_app(flags).test_client()
+            response=client.get('/')
+            self.assertEqual(response.location,path)
+            self.assertEqual(client.get(path).status_code,200)
+
+    def test_disabled_details_and_setup_have_no_indirect_links(self):
+        from src import similarity
+        similarity.build(self.path)
+        app=self.feature_app({'movie_details':False,'setup':False})
+        client=app.test_client()
+        for path in ['/movie-search','/hidden-gems','/bombs','/source-differences','/similar-movies?movie_id=1','/six-degrees?start=10&end=12']:
+            response=client.get(path)
+            self.assertEqual(response.status_code,200)
+            self.assertNotIn(b'href="/movie/',response.data)
+            self.assertIn(b'data-movie-details="disabled"',response.data)
+        client.get('/manual-entry')
+        with client.session_transaction() as session:token=session['csrf']
+        saved=client.post('/manual-entry',data={'csrf_token':token,'title':'No details redirect'})
+        self.assertEqual(saved.location,'/manual-entry')
+        self.assertIn(b'saved successfully',client.get(saved.location).data)
+        app.config['DATABASE']=str(Path(self.temp_case.name)/'absent.db')
+        response=client.get('/movie-search')
+        self.assertEqual(response.status_code,503)
+        self.assertNotIn(b'init-db',response.data)
+        self.assertEqual(client.get('/setup').status_code,404)
+
+    def test_degrees_to_builder_and_combined_sources(self):
+        page=self.client.get('/six-degrees?start=10&end=12')
+        self.assertIn(b'id="graph-explore-builder"',page.data)
+        self.assertIn(b'target="_blank" rel="noopener"',page.data)
+        disabled=self.feature_app({'knowledge_graph':False}).test_client()
+        self.assertNotIn(b'id="graph-explore-builder"',disabled.get('/six-degrees?start=10&end=12').data)
+        base='/api/knowledge-graph/'
+        data=self.client.get(base+'view?source=both&node=movie:1&expand=movie:1').json
+        self.assertEqual({n['data']['id'] for n in data['nodes']},{'movie:1','actor:10','actor:11','genre:18'})
+        self.assertEqual(len({e['data']['id'] for e in data['edges']}),len(data['edges']))
+        for edge in data['edges']:
+            self.assertEqual({r['source'] for r in edge['data']['details']},{'movies','tmdb'})
+        found=self.client.get(base+'search?source=both&kind=movie&q=TMDB+exclusive').json
+        self.assertIn('movie:4',{r['id'] for r in found['results']})
+        self.assertEqual(self.client.get(base+'search?source=both&min_budget=1').status_code,400)
+        self.assertEqual(self.client.get(base+'suggestions?source=both&q=Same').status_code,200)
+        self.assertEqual(self.client.get(base+'view?source=both&node=genre:18&expand=genre:18').status_code,200)
+
     def test_import_coverage_and_variants(self):
         with db.connection(self.path) as c:
             self.assertEqual(c.execute('SELECT COUNT(*) FROM films').fetchone()[0],4)
@@ -125,13 +301,13 @@ class AppTest(unittest.TestCase):
         config.write_text('application_features:\n  Movie Search: Disable\n')
         app=self.feature_app(config_file=config)
         client=app.test_client()
-        self.assertEqual(client.get('/movie-search').location,'/')
+        self.assertEqual(client.get('/movie-search').status_code,404)
         self.assertEqual(client.get('/password').status_code,404)
         self.assertNotIn(b'>Movie Search</a>',client.get('/hidden-gems').data)
         self.assertIn(b'Bombed at the Box Office',client.get('/bombs').data)
         # A running process uses its startup snapshot until restarted.
         config.write_text('application_features:\n  Movie Search: Enable\n')
-        self.assertEqual(client.get('/movie-search').status_code,302)
+        self.assertEqual(client.get('/movie-search').status_code,404)
         self.assertEqual(self.feature_app(config_file=config).test_client().get('/').status_code,200)
         for text in ['application_features: [Movie Search]', 'application_features:\n  Movie Search: Maybe',
                      'application_features:\n  Movie Search: Enable\n  Movie Search: Disable',

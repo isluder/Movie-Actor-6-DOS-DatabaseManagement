@@ -9,9 +9,9 @@ import sqlite3
 from urllib.parse import urlencode
 
 import click
-from flask import Flask, abort, g, session, jsonify, redirect, render_template, request, url_for, has_request_context
+from flask import Flask, abort, g, session, jsonify, redirect, render_template, request, url_for, has_request_context, flash
 try:
-    from . import database as db, graph, validation as valid, features, dashboard, sql_search as sql_tools, similarity
+    from . import database as db, graph, validation as valid, features, dashboard, sql_search as sql_tools, similarity, catalog_graph
     from .ingest_data import run_ingestion, DATA_DIR
 except ImportError:
     import database as db
@@ -20,7 +20,8 @@ except ImportError:
     import features
     import dashboard
     import sql_search as sql_tools
-    import similarity, similarity
+    import similarity
+    import catalog_graph
     from ingest_data import run_ingestion, DATA_DIR
 
 PAGES={page:features.LABELS[key] for page,key in features.PAGE_FEATURES.items()}
@@ -34,7 +35,8 @@ def create_app(config=None):
     app.config['FEATURES']=features.load_features(app.config['FEATURE_CONFIG'],app.config.get('FEATURES'))
     flags=app.config['FEATURES']
     enabled_pages={page:label for page,label in PAGES.items() if flags[features.PAGE_FEATURES[page]]}
-    home_endpoint='home'
+    landing_pages=['home',*PAGES,'knowledge_graph','sql_search','manual_entry','setup']
+    home_endpoint=next((page for page in landing_pages if flags[features.ENDPOINT_FEATURES[page]]),None)
     # Schema creation is explicit through init-db/rebuild; factory construction is read-only for the database.
     @contextmanager
     def connected():
@@ -47,6 +49,12 @@ def create_app(config=None):
         for key,value in (values or {}).items():
             if key in ('movie_id',) and abs(value)>9223372036854775807:abort(404)
 
+    def catalog_unavailable():
+        if request.path.startswith('/api/'):
+            return jsonify(errors={'catalog':'The movie catalog is unavailable.'}),503
+        if flags['setup']:return render_template('setup.html'),503
+        return render_template('error.html',message='The movie catalog is unavailable.'),503
+
     @app.before_request
     def load_context():
         g.ready=False;g.version='uninitialized'
@@ -56,19 +64,19 @@ def create_app(config=None):
         if request.path=='/api/neighborhood' and not flags['interactive_graph']:disabled=True
         if request.endpoint=='actors_api' and not any(flags[key] for key in ('movie_search','six_degrees')):disabled=True
         if disabled:
-            if request.endpoint=='index' and enabled_pages:return redirect(url_for(home_endpoint))
+            if request.endpoint=='home' and home_endpoint:return redirect(url_for(home_endpoint))
             if request.path.startswith('/api/'):return jsonify(errors={'feature':'This feature is disabled in the application configuration.'}),404
             abort(404,description='This feature is disabled in the application configuration.')
         if not Path(app.config['DATABASE']).exists():
-            if request.endpoint not in ('setup','static'):return render_template('setup.html'),503
+            if request.endpoint not in ('setup','static'):return catalog_unavailable()
             return
         with connected() as c:
             if not c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='catalog_meta'").fetchone():
-                if request.endpoint not in ('setup','static'):return render_template('setup.html'),503
+                if request.endpoint not in ('setup','static'):return catalog_unavailable()
                 return
             g.version=db.version(c)
             g.ready=g.version!='uninitialized' and db.schema_version(c)==db.SCHEMA_VERSION
-        if not g.ready and request.endpoint!='setup':return render_template('setup.html'),503
+        if not g.ready and request.endpoint!='setup':return catalog_unavailable()
     @app.context_processor
     def context():
         return dict(sources=db.SOURCES,pages=PAGES,nav_pages=enabled_pages,features=flags,home_endpoint=home_endpoint,
@@ -93,7 +101,7 @@ def create_app(config=None):
     def setup():return render_template('setup.html')
 
     def listing(page_type):
-        if not g.ready:return render_template('setup.html'),503
+        if not g.ready:return catalog_unavailable()
         errors={};f=dict(request.args)
         with connected() as c:
             try:
@@ -113,7 +121,7 @@ def create_app(config=None):
 
     @app.route('/')
     def home():
-        if request.args:return redirect(url_for('index', **request.args))
+        if request.args and flags['movie_search']:return redirect(url_for('index', **request.args))
         with connected() as c:
             counts = dict(movies=c.execute('SELECT COUNT(*) FROM films').fetchone()[0],
                           actors=c.execute('SELECT COUNT(*) FROM people').fetchone()[0])
@@ -123,7 +131,27 @@ def create_app(config=None):
     def index():return listing('index')
 
     @app.route('/knowledge-graph')
-    def knowledge_graph():return render_template('knowledge_graph.html')
+    def knowledge_graph():
+        with connected() as c:genre_list=db.genres(c)
+        return render_template('knowledge_graph.html', genres=genre_list)
+
+    @app.route('/api/knowledge-graph/search')
+    def knowledge_graph_search():
+        with connected() as c:
+            return jsonify(catalog_graph.search(c,catalog_graph.filters(request.args,c)))
+
+    @app.route('/api/knowledge-graph/suggestions')
+    def knowledge_graph_suggestions():
+        with connected() as c:
+            return jsonify(catalog_graph.suggestions(c,catalog_graph.filters(request.args,c),request.args.get('field','q')))
+
+    @app.route('/api/knowledge-graph/view')
+    def knowledge_graph_view():
+        with connected() as c:
+            if request.args.get('catalog_version') not in (None,db.version(c)):
+                return jsonify(errors={'catalog':'The catalog changed. Clear the canvas and search again.'}),409
+            return jsonify(catalog_graph.view(c,catalog_graph.filters(request.args,c),request.args.getlist('node'),request.args.get('expand')))
+
 
     @app.route('/similar-movies')
     def similar_movies():
@@ -183,7 +211,9 @@ def create_app(config=None):
                     c.execute('BEGIN IMMEDIATE')
                     entry = valid.manual_entry(request.form, c)
                     mid = db.add_manual_entry(c, entry)
-                return redirect(url_for('movie_detail', movie_id=mid), code=303)
+                if flags['movie_details']:return redirect(url_for('movie_detail', movie_id=mid), code=303)
+                flash(f'Movie #{mid} saved successfully.','success')
+                return redirect(url_for('manual_entry'),code=303)
             except valid.ValidationError as exc:errors = exc.errors
         with connected() as c:genre_list = db.genres(c)
         cast_rows = list(zip(request.form.getlist('actor_id'), request.form.getlist('actor_name'), request.form.getlist('role'))) or [('', '', '')]
