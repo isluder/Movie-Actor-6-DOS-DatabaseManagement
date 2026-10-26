@@ -1,8 +1,9 @@
 # Film Reel-ational Data
 
 Andrew and Isaac's Flask + SQLite Database Management project. Search movies,
-compare values from two datasets, and explore actor–movie connections through a
-six-degrees graph. No account is required.
+compare values from two datasets, find similar movies, and explore actor–movie
+connections through a six-degrees graph. Build a free-form knowledge graph in
+your browser. No account is required.
 
 ## Run locally
 
@@ -93,9 +94,12 @@ storage per page. These preferences do not require accounts or database tables.
 
 ## Utility menu, SQL Search, and Manual Entry
 
-The top-right ≡ menu contains Movie Search, Source Differences, SQL Search,
-Manual Entry, and the Light/Dark mode button. Disabled features appear as disabled
-menu items. Hidden Gems, box-office searches, and Six Degrees remain visible tabs.
+The home page introduces the catalog and links to the enabled features. Movie
+Search is at `/movie-search`; old root URLs with search parameters redirect there.
+The top-right ≡ menu contains Home, Build your own knowledge graph, Movie Search,
+Source Differences, SQL Search, Manual Entry, and the Light/Dark mode button. Disabled features appear as disabled
+menu items. Hidden Gems, box-office searches, Six Degrees, and Similar Movies
+are visible tabs.
 Theme choice persists in browser storage.
 
 SQL Search accepts a single read-only query, including joins and CTEs. Example
@@ -114,11 +118,44 @@ is committed in one transaction. Imported values stay intact. Select Manual entr
 for numerical searches or its cast network, or use Combined sources for graph
 connections. Catalog rebuilds replace manual entries, with a pre-rebuild backup.
 
+## Similar Movies and your own knowledge graph
+
+Similar Movies searches by title, then ranks the other movies by cosine similarity.
+It uses small, sparse TF–IDF vectors of actor IDs, title words (including source
+variants), and genre IDs. Each available feature group is normalized to equal
+weight; the combined vector is normalized again. Duplicate source credits and
+roles do not increase an actor's weight. Results explain their shared features.
+Scores describe metadata overlap, not plot semantics or recommendation confidence.
+No model download or new Python dependency is required.
+
+The full index is built only by an explicit command, never during page loads:
+
+```bash
+# Read-only timing estimate from up to 1,500 movies:
+python -m flask --app src.app:create_app build-similarity-index --benchmark
+# Build the complete catalog index:
+python -m flask --app src.app:create_app build-similarity-index
+```
+
+The compressed index sits beside the database as `*.db.similarity.json.gz` and
+is excluded from Git. It publishes atomically. Rebuild it after a catalog rebuild
+or Manual Entry: the page refuses an index from an older catalog version.
+
+Build your own knowledge graph is a separate browser workspace using the bundled
+Cytoscape renderer. Add typed nodes and labeled, directed relationships, drag nodes,
+rename or delete selections, fit the graph, or load an example. A text list makes
+items selectable without interacting with the canvas. Undo/redo restores the last
+change, including a replaced or cleared graph. Browser storage autosaves the graph;
+JSON export/import lets you keep a portable copy. Imports validate before replacing
+the canvas (200 nodes, 500 relationships, maximum 1 MB). This workspace does not
+modify catalog data and does not synchronize between browsers.
+
 ## Configuration
 
 `config.yaml` controls Movie Search, Hidden Gems, Bombed at the Box Office, Source
 Differences, Six Degrees, Interactive Graph, Dashboard Statistics, and SQL Previews.
-SQL Search and Manual Entry also have independent switches. Set Enable/Disable
+SQL Search, Manual Entry, Similar Movies, and Build your own knowledge graph
+also have independent switches. Set Enable/Disable
 and restart. Unknown names, duplicate
 keys, invalid values, and missing configuration files stop startup with an error.
 Omitted known switches default to enabled. Disabling Interactive Graph retains a
@@ -155,10 +192,12 @@ python -m unittest discover -s tests -v
 node tests/test_graph_ui.cjs
 node tests/test_dashboard_ui.cjs
 node tests/test_distances_ui.cjs
+node tests/test_knowledge_graph_ui.cjs
 ```
 
 Python tests cover imports, source differences, source-coherent analytics, sorting,
 pagination, graph traversal/expansion, feature switches, removed routes, SQL
 constraints, legacy-schema migration, backup contents, and transactional rollback.
 JavaScript tests exercise graph events, dashboard customization, and actor distance
-controls headlessly.
+controls, and knowledge graph validation/editing/imports headlessly. Similarity
+tests cover source deduplication, ranking, sample benchmarking, and stale indexes.

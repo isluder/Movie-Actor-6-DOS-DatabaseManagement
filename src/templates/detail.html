@@ -1,9 +1,14 @@
 {% extends 'base.html' %}{% import 'macros.html' as m with context %}{% block content %}
 <h1>{{ movie.title }}</h1><p>Movie ID {{ movie.id }}</p>
+{% if features.similar_movies %}<p><a class="btn btn-secondary" href="{{ url_for('similar_movies',movie_id=movie.id) }}">Find similar movies →</a></p>{% endif %}
 <h2>Movie values by source</h2>{{ m.source_values(movie['values'],sources,true) }}
 <h2>Genres</h2><p>{% for genre in movie.genres %}<span class="badge">{{ genre.name }} · {{ sources[genre.source] }}</span> {% endfor %}</p>
 <h2>Cast and roles</h2>
+{% if movie.cast %}
 <div class="table-responsive"><table><thead><tr><th>Actor</th><th>Role</th><th>Source</th></tr></thead><tbody>
 {% for cast in movie.cast %}<tr><td>{% if features.six_degrees %}<a href="{{ url_for('degrees',start=cast.actor_id) }}">{{ cast.name }}</a>{% else %}{{ cast.name }}{% endif %} <small>#{{ cast.actor_id }}</small></td><td>{{ cast.role }}</td><td>{{ sources[cast.source] }}</td></tr>{% endfor %}
 </tbody></table></div>
+{% else %}
+<p class="hint" role="status">No cast or role records are available for this movie in the imported datasets.</p>
+{% endif %}
 {% endblock %}

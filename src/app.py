@@ -11,7 +11,7 @@ from urllib.parse import urlencode
 import click
 from flask import Flask, abort, g, session, jsonify, redirect, render_template, request, url_for, has_request_context
 try:
-    from . import database as db, graph, validation as valid, features, dashboard, sql_search as sql_tools
+    from . import database as db, graph, validation as valid, features, dashboard, sql_search as sql_tools, similarity
     from .ingest_data import run_ingestion, DATA_DIR
 except ImportError:
     import database as db
@@ -20,6 +20,7 @@ except ImportError:
     import features
     import dashboard
     import sql_search as sql_tools
+    import similarity, similarity
     from ingest_data import run_ingestion, DATA_DIR
 
 PAGES={page:features.LABELS[key] for page,key in features.PAGE_FEATURES.items()}
@@ -33,7 +34,7 @@ def create_app(config=None):
     app.config['FEATURES']=features.load_features(app.config['FEATURE_CONFIG'],app.config.get('FEATURES'))
     flags=app.config['FEATURES']
     enabled_pages={page:label for page,label in PAGES.items() if flags[features.PAGE_FEATURES[page]]}
-    home_endpoint=next(iter(enabled_pages),'setup')
+    home_endpoint='home'
     # Schema creation is explicit through init-db/rebuild; factory construction is read-only for the database.
     @contextmanager
     def connected():
@@ -111,7 +112,46 @@ def create_app(config=None):
                                stats=counts,dashboard_data=dashboard_data,page=page,page_url=page_url),400 if errors else 200
 
     @app.route('/')
+    def home():
+        if request.args:return redirect(url_for('index', **request.args))
+        with connected() as c:
+            counts = dict(movies=c.execute('SELECT COUNT(*) FROM films').fetchone()[0],
+                          actors=c.execute('SELECT COUNT(*) FROM people').fetchone()[0])
+        return render_template('home.html', counts=counts)
+
+    @app.route('/movie-search')
     def index():return listing('index')
+
+    @app.route('/knowledge-graph')
+    def knowledge_graph():return render_template('knowledge_graph.html')
+
+    @app.route('/similar-movies')
+    def similar_movies():
+        query = request.args.get('q', '').strip()[:200]
+        selected = None; results = []; choices = []; error = None
+        with connected() as c:
+            docs = similarity.load(app.config['DATABASE'], db.version(c))
+            if query:
+                # instr treats percent/underscore as literal title characters.
+                choices = db.dictionaries(c.execute("SELECT id,title FROM films WHERE instr(lower(title),lower(?))>0 ORDER BY title,id LIMIT 30", (query,)))
+            raw_id = request.args.get('movie_id')
+            if raw_id is not None:
+                try:
+                    mid = int(raw_id)
+                    if abs(mid)>9223372036854775807:raise ValueError()
+                    if not c.execute('SELECT 1 FROM films WHERE id=?', (mid,)).fetchone():raise ValueError()
+                    if docs is not None:
+                        selected, results = similarity.recommend(docs, mid)
+                        actors = dict(c.execute('SELECT id,name FROM people'))
+                        genres = dict(c.execute('SELECT id,name FROM catalog_genres'))
+                        for result in results:
+                            result['reasons'] = [actors.get(int(token[6:]), 'Actor') if token.startswith('actor:') else
+                                                 genres.get(int(token[6:]), 'Genre') if token.startswith('genre:') else
+                                                 token[6:] for token in result['shared']]
+                except ValueError:error = 'Choose a valid movie from the catalog.'
+        return render_template('similar_movies.html', query=query, choices=choices, selected=selected,
+                               results=results, index_ready=docs is not None, error=error), 400 if error else 200
+
     @app.route('/hidden-gems')
     def gems():return listing('gems')
     @app.route('/bombs')
@@ -210,6 +250,12 @@ def create_app(config=None):
             if request.args.get('catalog_version') not in (None,db.version(c)):
                 return jsonify(errors={'catalog':'The catalog changed. Find the connection again before expanding.'}),409
             return jsonify(graph.expand(c,app.config['DATABASE'],node[0],entity_id,f['source'],offset,limit))
+
+    @app.cli.command('build-similarity-index')
+    @click.option('--benchmark', is_flag=True, help='Estimate time from a sample without building the index.')
+    def build_similarity_index(benchmark):
+        if benchmark:click.echo(json.dumps(similarity.benchmark(app.config['DATABASE'])))
+        else:click.echo(f"Indexed {similarity.build(app.config['DATABASE']):,} movies.")
 
     @app.cli.command('init-db')
     def init_command():

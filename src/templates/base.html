@@ -5,7 +5,7 @@
 <div class="nav-actions"><div class="nav-links">{% for key,label in nav_pages.items() if key not in ['index','differences'] %}<a class="nav-link {% if request.endpoint==key %}active{% endif %}" href="{{ url_for(key) }}">{{ label }}</a>{% endfor %}</div>
 <details class="site-menu" id="site-menu"><summary aria-label="Navigation menu" title="Navigation menu">≡</summary>
 <div class="site-menu-items">
-{% for endpoint,label,enabled in [('index','Movie Search',features.movie_search),('differences','Source Differences',features.source_differences),('sql_search','SQL Search',features.sql_search),('manual_entry','Manual Entry',features.manual_entry)] %}
+{% for endpoint,label,enabled in [('home','Home',true),('knowledge_graph','Build your own knowledge graph',features.knowledge_graph),('index','Movie Search',features.movie_search),('differences','Source Differences',features.source_differences),('sql_search','SQL Search',features.sql_search),('manual_entry','Manual Entry',features.manual_entry)] %}
 {% if enabled %}<a href="{{ url_for(endpoint) }}" {% if request.endpoint==endpoint %}aria-current="page"{% endif %}>{{ label }}</a>{% else %}<span aria-disabled="true">{{ label }} <small>Disabled</small></span>{% endif %}
 {% endfor %}
 <button type="button" id="theme-toggle" aria-label="Switch to light mode">☀ Light mode</button>

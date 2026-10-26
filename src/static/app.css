@@ -755,3 +755,23 @@ body{
 .sql-examples h2 { margin-top: 0; font-size: 1rem; }
 .sql-example-buttons { display: flex; flex-wrap: wrap; gap: .5rem; margin: .75rem 0; }
 #sql-example-status:empty { display: none; }
+
+/* Welcome, recommendations, and the personal graph canvas. */
+.home-hero{padding:clamp(1rem,4vw,4rem) 0 3rem;max-width:1000px}
+.home-hero h1{font-size:clamp(2.3rem,5vw,4.4rem);line-height:1.1;letter-spacing:-.055em;margin:1rem 0 1.5rem}
+.home-hero .page-intro{font-size:1.1rem;line-height:1.8}
+.home-stats{display:flex;gap:1.8rem;flex-wrap:wrap;margin:1.7rem 0;color:var(--text-secondary)}
+.home-stats strong{color:var(--text-primary);font-size:1.3rem}
+.feature-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:1.2rem;margin:1.5rem 0 3rem}
+.feature-card{position:relative;display:block;padding:1.8rem;border:1px solid var(--border-color);border-radius:14px;background:var(--bg-card);color:var(--text-primary)}
+.feature-card:hover,.feature-card:focus-visible{border-color:var(--accent-gold);color:var(--text-primary);transform:translateY(-2px)}
+.feature-card h2{font-size:1.25rem}.feature-card p,.similar-card p{color:var(--text-secondary)}
+.feature-icon{font-size:1.7rem;color:var(--accent-gold)}.feature-go{position:absolute;right:1.5rem;top:1.8rem;color:var(--accent-gold)}
+.inline-controls,.builder-toolbar{display:flex;gap:.6rem;flex-wrap:wrap;align-items:center}.inline-controls input{flex:1;min-width:180px}
+.movie-choices{list-style:none;padding:0}.movie-choices li{padding:.65rem 0;border-bottom:1px solid var(--border-color)}
+.builder-layout{display:grid;grid-template-columns:290px minmax(0,1fr);gap:1.25rem}.builder-layout aside{align-self:start}.builder-layout input,.builder-layout select{width:100%;margin-bottom:.7rem}
+.builder-toolbar{margin-bottom:.8rem}.builder-toolbar label{margin:0}.builder-toolbar button:disabled{opacity:.5}
+#knowledge-canvas{height:650px;border:1px solid var(--border-color);background:var(--bg-secondary);border-radius:14px;margin:1rem 0}
+.kg-list-item{display:block;text-align:left;padding:.6rem;width:100%;border:0;border-bottom:1px solid var(--border-color);background:var(--bg-card);color:var(--text-primary)}
+.builder-layout details{margin:1rem 0}#kg-status{min-height:1.6rem;color:var(--text-secondary)}
+@media(max-width:900px){.builder-layout{grid-template-columns:1fr}#knowledge-canvas{height:480px}.home-hero{padding-top:1rem}.nav-actions{flex-wrap:wrap}}

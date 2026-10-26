@@ -47,6 +47,57 @@ class AppTest(unittest.TestCase):
         self.client=self.app.test_client()
     def tearDown(self):self.temp_case.cleanup()
 
+    def test_home_and_new_feature_switches(self):
+        home=self.client.get('/')
+        self.assertIn(b'Every movie has a connection',home.data)
+        for path in ['/movie-search','/similar-movies','/knowledge-graph','/hidden-gems','/bombs','/six-degrees']:
+            self.assertIn(('href="'+path+'"').encode(),home.data)
+        disabled=self.feature_app({'similar_movies':False,'knowledge_graph':False}).test_client()
+        for path in ['/similar-movies','/knowledge-graph']:
+            self.assertEqual(disabled.get(path).status_code,404)
+            self.assertNotIn(('href="'+path+'"').encode(),disabled.get('/').data)
+
+    def test_similarity_index_and_ranking(self):
+        from src import similarity
+        self.assertFalse(similarity.index_path(self.path).exists())
+        self.assertIn(b'index is not ready',self.client.get('/similar-movies').data)
+        benchmark=similarity.benchmark(self.path,2)
+        self.assertEqual(benchmark['movies'],4)
+        self.assertFalse(similarity.index_path(self.path).exists())
+        with db.connection(self.path) as c:
+            docs=similarity.documents(c)
+            first=next(d for d in docs if d['id']==1)
+            self.assertEqual(len([t for t in first['tokens'] if t.startswith('actor:')]),2)
+        self.assertEqual(similarity.build(self.path),4)
+        with db.connection(self.path) as c:docs=similarity.load(self.path,db.version(c))
+        chosen,related=similarity.recommend(docs,1)
+        self.assertEqual(related[0]['id'],2)
+        self.assertTrue(all(0<r['score']<=1 and r['id']!=1 for r in related))
+        self.assertEqual(len(related),1)
+        page=self.client.get('/similar-movies?movie_id=1')
+        self.assertEqual(page.status_code,200)
+        self.assertIn(b'Second',page.data)
+        self.assertIn(b'Same Name',page.data)
+        self.assertNotIn(b'index is not ready',page.data)
+        self.assertIn(b'Choose your starting movie',self.client.get('/similar-movies?q=Apostrophe').data)
+        for raw in ['abc','999','9'*30]:
+            self.assertEqual(self.client.get('/similar-movies?movie_id='+raw).status_code,400)
+        with db.connection(self.path) as c:db.bump_version(c)
+        self.assertIn(b'index is not ready',self.client.get('/similar-movies?movie_id=1').data)
+        self.assertEqual(similarity.build(self.path),4)
+        self.assertNotIn(b'index is not ready',self.client.get('/similar-movies').data)
+
+    def test_movie_cast_and_missing_cast_message(self):
+        populated=self.client.get('/movie/1')
+        self.assertIn(b'Same Name',populated.data)
+        self.assertIn(b'Hero',populated.data)
+        self.assertIn(b'The Movies Dataset</td>',populated.data)
+        self.assertIn(b'TMDB 5000</td>',populated.data)
+        self.assertNotIn(b'No cast or role records',populated.data)
+        empty=self.client.get('/movie/3')
+        self.assertIn(b'No cast or role records are available',empty.data)
+        self.assertNotIn(b'<th>Actor</th>',empty.data)
+
     def test_import_coverage_and_variants(self):
         with db.connection(self.path) as c:
             self.assertEqual(c.execute('SELECT COUNT(*) FROM films').fetchone()[0],4)
@@ -56,11 +107,11 @@ class AppTest(unittest.TestCase):
             self.assertFalse(c.execute('PRAGMA foreign_key_check').fetchall())
 
     def test_pages_render_and_pagination(self):
-        for url in ['/','/hidden-gems','/bombs','/source-differences','/source-differences?field=vote_average','/movie/1','/six-degrees','/six-degrees?start=10&end=12&depth=1']:
+        for url in ['/','/movie-search','/knowledge-graph','/similar-movies','/hidden-gems','/bombs','/source-differences','/source-differences?field=vote_average','/movie/1','/six-degrees','/six-degrees?start=10&end=12&depth=1']:
             with self.subTest(url=url):self.assertEqual(self.client.get(url).status_code,200)
         with db.connection(self.path) as c:
             c.executemany('INSERT INTO films(id,title) VALUES(?,?)',[(i,'Extra '+str(i)) for i in range(100,160)])
-        response=self.client.get('/')
+        response=self.client.get('/movie-search')
         self.assertIn(b'64 matches',response.data)
         self.assertIn(b'Next',response.data)
 
@@ -74,13 +125,13 @@ class AppTest(unittest.TestCase):
         config.write_text('application_features:\n  Movie Search: Disable\n')
         app=self.feature_app(config_file=config)
         client=app.test_client()
-        self.assertEqual(client.get('/').location,'/hidden-gems')
+        self.assertEqual(client.get('/movie-search').location,'/')
         self.assertEqual(client.get('/password').status_code,404)
         self.assertNotIn(b'>Movie Search</a>',client.get('/hidden-gems').data)
         self.assertIn(b'Bombed at the Box Office',client.get('/bombs').data)
         # A running process uses its startup snapshot until restarted.
         config.write_text('application_features:\n  Movie Search: Enable\n')
-        self.assertEqual(client.get('/').status_code,302)
+        self.assertEqual(client.get('/movie-search').status_code,302)
         self.assertEqual(self.feature_app(config_file=config).test_client().get('/').status_code,200)
         for text in ['application_features: [Movie Search]', 'application_features:\n  Movie Search: Maybe',
                      'application_features:\n  Movie Search: Enable\n  Movie Search: Disable',
@@ -92,13 +143,13 @@ class AppTest(unittest.TestCase):
 
     def test_validation_and_same_cast_member(self):
         for val in ['abc','NaN','Infinity','-1','11']:
-            self.assertEqual(self.client.get('/?min_rating='+val).status_code,400)
-        self.assertEqual(self.client.get('/?min_rating=8&max_rating=7').status_code,400)
-        self.assertEqual(self.client.get('/?min_budget=-1').status_code,400)
+            self.assertEqual(self.client.get('/movie-search?min_rating='+val).status_code,400)
+        self.assertEqual(self.client.get('/movie-search?min_rating=8&max_rating=7').status_code,400)
+        self.assertEqual(self.client.get('/movie-search?min_budget=-1').status_code,400)
         self.assertEqual(self.client.get('/api/connections?start=10000&end=10').status_code,400)
-        self.assertEqual(self.client.get('/?actor_id=10&character=Villain').status_code,200)
-        self.assertIn(b'0 matches',self.client.get('/?actor_id=10&character=Villain').data)
-        self.assertIn(b'1 matches',self.client.get('/?actor_id=10&character=Hero').data)
+        self.assertEqual(self.client.get('/movie-search?actor_id=10&character=Villain').status_code,200)
+        self.assertIn(b'0 matches',self.client.get('/movie-search?actor_id=10&character=Villain').data)
+        self.assertIn(b'1 matches',self.client.get('/movie-search?actor_id=10&character=Hero').data)
         self.assertEqual(len(self.client.get('/api/actors?q=Same').json['actors']),2)
 
     def test_independent_sort_field_and_direction(self):
@@ -130,15 +181,15 @@ class AppTest(unittest.TestCase):
             c.execute("INSERT INTO films VALUES(23,'Sort fixture Absent')")
             f=validation.query(dict(title='Sort fixture',source='tmdb',sort_by='title',sort_order='asc'),'index',c)
             self.assertEqual([r['id'] for r in db.query_movies(c,'index',f)['rows']],[23,21,22,20])
-        for url in ['/?sort_by=rating&sort_order=asc','/hidden-gems?sort_by=rating&sort_order=asc',
+        for url in ['/movie-search?sort_by=rating&sort_order=asc','/hidden-gems?sort_by=rating&sort_order=asc',
                     '/bombs?sort_by=budget&sort_order=asc']:
             page=self.client.get(url)
             self.assertEqual(page.status_code,200)
             self.assertIn(b'<label for="sort_by">Sort by</label>',page.data)
             self.assertIn(b'<option value="asc" selected>Ascending</option>',page.data)
             self.assertNotIn(b'<option value="net_loss_desc"',page.data)
-        for url in ['/?sort_by=not-a-column','/?sort_order=DROP%20TABLE%20films','/bombs?sort_by=gem_score',
-                    '/hidden-gems?sort_order=up','/?sort_order=']:
+        for url in ['/movie-search?sort_by=not-a-column','/movie-search?sort_order=DROP%20TABLE%20films','/bombs?sort_by=gem_score',
+                    '/hidden-gems?sort_order=up','/movie-search?sort_order=']:
             self.assertEqual(self.client.get(url).status_code,400)
 
     def test_sort_pagination_and_legacy_urls(self):
@@ -177,7 +228,7 @@ class AppTest(unittest.TestCase):
         return json.loads(response.data.decode().split(marker,1)[1].split('</script>',1)[0])
 
     def test_dashboard_source_metrics_and_feature_flags(self):
-        data=self.dashboard_payload(self.client.get('/'))
+        data=self.dashboard_payload(self.client.get('/movie-search'))
         self.assertEqual(data['defaults'],['movies','actors','gems','bombs'])
         metrics={m['id']:m for m in data['metrics']}
         self.assertEqual(metrics['movies']['value'],4)
@@ -185,14 +236,14 @@ class AppTest(unittest.TestCase):
         self.assertEqual(metrics['average_rating']['value'],8.25)
         self.assertEqual(metrics['average_budget']['value'],10_000_000)
         self.assertEqual(metrics['total_revenue']['value'],5_000_000)
-        tmdb=self.dashboard_payload(self.client.get('/?source=tmdb'))
+        tmdb=self.dashboard_payload(self.client.get('/movie-search?source=tmdb'))
         selected={m['id']:m for m in tmdb['metrics']}
         self.assertEqual(selected['average_rating']['value'],8.5)
         self.assertEqual(selected['average_budget']['value'],5_500_000)
         self.assertEqual(selected['total_revenue']['value'],7_000_000)
         self.assertIn('TMDB 5000',selected['average_rating']['scope'])
         self.assertIn('all sources',selected['movies']['scope'])
-        empty=self.dashboard_payload(self.client.get('/?title=NotInFixture'))
+        empty=self.dashboard_payload(self.client.get('/movie-search?title=NotInFixture'))
         empty_metrics={m['id']:m for m in empty['metrics']}
         self.assertEqual(empty_metrics['matches']['display'],'0')
         self.assertEqual(empty_metrics['average_rating']['display'],'—')
@@ -201,7 +252,7 @@ class AppTest(unittest.TestCase):
         for path in ['/','/hidden-gems','/bombs']:
             self.assertNotIn(b'id="dashboard-data"',disabled.get(path).data)
         hidden=self.feature_app({'hidden_gems':False,'box_office':False}).test_client()
-        flags_data=self.dashboard_payload(hidden.get('/'))
+        flags_data=self.dashboard_payload(hidden.get('/movie-search'))
         available={m['id'] for m in flags_data['metrics']}
         self.assertTrue({'gems','bombs','shortfall'}.isdisjoint(available))
         self.assertTrue(set(flags_data['defaults'])<=available)
@@ -229,7 +280,7 @@ class AppTest(unittest.TestCase):
             result=db.query_movies(c,'index',validation.query({'title':"Apostrophe"},'index',c))
             self.assertEqual([p['id'] for p in result['rows'][0]['cast_preview']],[10,11])
             self.assertEqual(result['rows'][0]['genres'][0]['name'],'Drama')
-        listing=self.client.get('/?title=No+known+budget')
+        listing=self.client.get('/movie-search?title=No+known+budget')
         self.assertIn(b'class="source-peek"',listing.data)
         self.assertNotIn(b'Values differ: vote count',listing.data)
         comparison=self.client.get('/source-differences?title=No+known+budget&field=vote_count')
@@ -424,7 +475,7 @@ class AppTest(unittest.TestCase):
             page=self.client.get(url)
             for label in [b'Log in',b'My Searches',b'Local override',b'Original rows and provenance',b'Admin actions']:
                 self.assertNotIn(label,page.data)
-        self.assertIn(b'Source Differences',self.client.get('/').data)
+        self.assertIn(b'Source Differences',self.client.get('/movie-search').data)
 
     def test_source_missing_values_and_constraints(self):
         with db.connection(self.path) as c:
@@ -478,7 +529,7 @@ class AppTest(unittest.TestCase):
 
     def test_utility_menu_and_feature_switches(self):
         client=self.feature_app({'source_differences':False}).test_client()
-        page=client.get('/').data
+        page=client.get('/movie-search').data
         self.assertIn(b'id="site-menu"',page)
         self.assertIn(b'Navigation menu',page)
         self.assertIn(b'Source Differences <small>Disabled</small>',page)
@@ -542,10 +593,10 @@ class AppTest(unittest.TestCase):
             self.assertEqual(c.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'").fetchone()[0],7)
             self.assertFalse(c.execute('PRAGMA foreign_key_check').fetchall())
         self.assertIn(b'Manual entries',self.client.get(response.location).data)
-        self.assertIn(b'Manual&#39;s Movie',self.client.get('/?source=manual&min_rating=8').data)
+        self.assertIn(b'Manual&#39;s Movie',self.client.get('/movie-search?source=manual&min_rating=8').data)
         result=self.client.get(f'/api/connections?start=10&end={aid}&source=manual').json
         self.assertEqual((result['status'],result['degrees']),('found',1))
-        self.assertIn(b"1 matches",self.client.get('/?source=manual&genre_id=18&min_rating=0').data)
+        self.assertIn(b"1 matches",self.client.get('/movie-search?source=manual&genre_id=18&min_rating=0').data)
 
     def test_manual_values_preserve_existing_sources(self):
         with db.connection(self.path) as c:original=[tuple(r) for r in c.execute('SELECT * FROM film_values WHERE movie_id=1')]

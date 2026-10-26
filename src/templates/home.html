@@ -1,0 +1,17 @@
+{% extends 'base.html' %}{% block content %}
+<section class="home-hero"><p class="eyebrow">Film Reel-ational Data</p><h1>Every movie has a connection.<br>Find your next one.</h1><p class="page-intro">Explore the people behind the films, discover overlooked favorites, and follow the connections that bring cinema together. A movie catalog built for curious searches.</p>
+<div class="home-stats"><span><strong>{{ '{:,}'.format(counts.movies) }}</strong> movies</span><span><strong>{{ '{:,}'.format(counts.actors) }}</strong> actors</span><span>Source values kept side by side</span></div>
+{% if features.movie_search %}<a class="btn btn-primary" href="{{ url_for('index') }}">Explore the catalog →</a>{% endif %}</section>
+<div class="feature-grid">
+{% for endpoint,key,title,description,icon in [
+('similar_movies','similar_movies','Find your next favorite','Choose a movie and discover films with similar casts, title words, and genres.','↗'),
+('gems','hidden_gems','Hidden Gems','Find highly rated movies that deserve a bigger audience.','◇'),
+('bombs','box_office','Bombed at the Box Office','Explore movies whose reported revenue fell short of their budgets.','↓'),
+('degrees','six_degrees','Six Degrees','Connect two actors through the movies they share.','◎'),
+('knowledge_graph','knowledge_graph','Build your own knowledge graph','Start with an idea. Add people, films, or anything else, then connect them.','✳'),
+('sql_search','sql_search','Ask the data directly','Explore the tables with editable SQL examples and read-only queries.','⌘'),
+('manual_entry','manual_entry','Add a movie','Contribute a movie, cast, and genres as a separate manual source.','+'),
+('differences','source_differences','Source Differences','Compare conflicting movie values across the imported datasets.','⇄') ] if features[key] %}
+<a class="feature-card" href="{{ url_for(endpoint) }}"><span class="feature-icon" aria-hidden="true">{{ icon }}</span><h2>{{ title }}</h2><p>{{ description }}</p><span class="feature-go" aria-hidden="true">→</span></a>
+{% endfor %}</div>
+{% endblock %}

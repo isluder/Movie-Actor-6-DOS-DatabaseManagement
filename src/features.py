@@ -16,11 +16,14 @@ LABELS = {
     'sql_previews': 'SQL Previews',
     'sql_search': 'SQL Search',
     'manual_entry': 'Manual Entry',
+    'similar_movies': 'Similar Movies',
+    'knowledge_graph': 'Build your own knowledge graph',
 }
 PAGE_FEATURES = {'index': 'movie_search', 'gems': 'hidden_gems', 'bombs': 'box_office',
-                 'differences': 'source_differences', 'degrees': 'six_degrees'}
+                 'differences': 'source_differences', 'degrees': 'six_degrees', 'similar_movies': 'similar_movies'}
 ENDPOINT_FEATURES = {
     **PAGE_FEATURES,
+    'knowledge_graph': 'knowledge_graph',
     'sql_search': 'sql_search', 'manual_entry': 'manual_entry',
     'connections_api': 'six_degrees',
     'expand_node_api': 'interactive_graph', 'actor_statistics_api': 'six_degrees',

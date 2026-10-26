@@ -229,3 +229,7 @@ __marimo__/
 *.db-journal
 *.db-wal
 *.db-shm
+
+# Rebuildable local movie similarity index
+*.similarity.json.gz
+.similarity-*
